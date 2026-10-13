@@ -371,7 +371,12 @@ function ChatPage() {
               />
             ) : (
               <>
-                <ChatContainerRoot className="relative flex-1" autoScroll={autoScroll} contextRef={scrollContextRef}>
+                <ChatContainerRoot
+                  className="relative flex-1"
+                  autoScroll={autoScroll}
+                  contextRef={scrollContextRef}
+                  navMessages={messages}
+                >
                   <ChatMessages
                     messages={messages}
                     status={status}

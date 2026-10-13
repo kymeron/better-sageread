@@ -367,7 +367,12 @@ export function PaperChatPanel({
         ) : messages.length === 0 && isInit.current ? (
           <EmptyState />
         ) : (
-          <ChatContainerRoot className="relative flex-1" autoScroll={autoScroll} contextRef={stickContextRef}>
+          <ChatContainerRoot
+            className="relative flex-1"
+            autoScroll={autoScroll}
+            contextRef={stickContextRef}
+            navMessages={messages}
+          >
             <ChatMessages
               messages={messages}
               status={status}

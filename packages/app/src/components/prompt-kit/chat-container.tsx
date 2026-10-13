@@ -1,6 +1,9 @@
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
+import type { UIMessage } from "ai";
+import { useEffect, useRef } from "react";
 import { StickToBottom, type StickToBottomContext, useStickToBottomContext } from "use-stick-to-bottom";
+import { ChatMessageRail } from "./chat-message-rail";
+import { type ChatNavBridge, ChatNavBridgeContext } from "./chat-nav-bridge";
 
 export type ChatContainerRootProps = {
   children: React.ReactNode;
@@ -9,6 +12,8 @@ export type ChatContainerRootProps = {
   resize?: "auto" | "instant" | "smooth";
   initial?: "auto" | "instant" | "smooth" | boolean;
   contextRef?: React.RefObject<StickToBottomContext>;
+  /** 传入则在聊天区右缘渲染消息导航条（轮次刻度 + 悬浮缩略列表） */
+  navMessages?: UIMessage[];
 } & React.HTMLAttributes<HTMLDivElement>;
 
 function AutoScrollController({ autoScroll }: { autoScroll: boolean }) {
@@ -41,8 +46,10 @@ function ChatContainerRoot({
   resize = "smooth",
   initial = "instant",
   contextRef,
+  navMessages,
   ...props
 }: ChatContainerRootProps) {
+  const bridgeRef = useRef<ChatNavBridge>({});
   return (
     <StickToBottom
       className={cn("flex overflow-y-auto overflow-x-hidden", className)}
@@ -58,8 +65,11 @@ function ChatContainerRoot({
       role="log"
       {...props}
     >
-      <AutoScrollController autoScroll={autoScroll} />
-      {children}
+      <ChatNavBridgeContext.Provider value={bridgeRef}>
+        <AutoScrollController autoScroll={autoScroll} />
+        {children}
+        {navMessages ? <ChatMessageRail messages={navMessages} /> : null}
+      </ChatNavBridgeContext.Provider>
     </StickToBottom>
   );
 }

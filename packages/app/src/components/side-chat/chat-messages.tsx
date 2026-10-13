@@ -1,6 +1,7 @@
 import { CitationMapContext, buildCitationMap } from "@/components/markdown/citation-source";
 import { ImagePreviewOverlay } from "@/components/media/image-interactions";
 import { ChatContainerContent, ChatContainerScrollAnchor } from "@/components/prompt-kit/chat-container";
+import { ChatNavBridgeContext } from "@/components/prompt-kit/chat-nav-bridge";
 import { Message, MessageAction, MessageActions, MessageContent } from "@/components/prompt-kit/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/prompt-kit/reasoning";
 import { Tool } from "@/components/prompt-kit/tool";
@@ -36,7 +37,7 @@ import {
   RefreshCw,
   Volume2,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { StickToBottomContext } from "use-stick-to-bottom";
 import { ChatSelectionPopup } from "./chat-selection-popup";
@@ -82,6 +83,9 @@ export const TOOL_NAME_MAP: Record<string, string> = {
  * 仅裁渲染层，messages 数据层全量保留（AI 上下文/导出不受影响） */
 const INITIAL_WINDOW = 6;
 const EXPAND_STEP = 6;
+/** 导航跳转后目标之下保留渲染的消息数 / 区间浏览下滑每次补齐的消息数 */
+const JUMP_AHEAD = 24;
+const EXPAND_NEWER = 12;
 
 /** D4 图片附件渲染：attachment:// 引用 → asset 协议 URL（文件在 {appData}/attachments，UI 不再吃 base64）。
  *  渲染组件 = MessageImagePart（限高折叠 + 大图预览，见 MessageQuotePart 之后） */
@@ -490,21 +494,36 @@ function ChatMessagesComponent({
   const prevScrollKey = useRef(scrollKey);
 
   // ─── P3 尾部窗口：默认只渲染最近 N 条，上滑渐进加载（切换对话重置；多选模式全量渲染）───
+  // 导航条跳转到窗口外的旧消息时进入"区间浏览"：tailCap 非空 = 只渲染到该下标（不含），底部出现"较新消息"占位，
+  // 下滑渐进补齐；不能直接把尾部窗口扩到目标处——数百条消息一次挂载会卡住数秒
   const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW);
+  const [tailCap, setTailCap] = useState<number | null>(null);
   const firstMessageId = messages[0]?.id;
   const prevFirstIdRef = useRef(firstMessageId);
+  const prevLengthRef = useRef(messages.length);
   useEffect(() => {
     if (prevFirstIdRef.current !== firstMessageId) {
       prevFirstIdRef.current = firstMessageId;
       setVisibleCount(INITIAL_WINDOW);
+      setTailCap(null);
     }
   }, [firstMessageId]);
+  // 新增消息（用户发送新问题）：退出区间浏览，回到尾部窗口
+  useEffect(() => {
+    if (messages.length > prevLengthRef.current && tailCap !== null) {
+      setTailCap(null);
+      setVisibleCount(INITIAL_WINDOW);
+    }
+    prevLengthRef.current = messages.length;
+  }, [messages.length, tailCap]);
 
   const windowActive = !selectionMode && messages.length > visibleCount;
   const windowStartIndex = windowActive ? messages.length - visibleCount : 0;
-  const visibleMessages = windowActive ? messages.slice(windowStartIndex) : messages;
+  const windowEndIndex = selectionMode || tailCap === null ? messages.length : Math.min(tailCap, messages.length);
+  const visibleMessages = messages.slice(windowStartIndex, windowEndIndex);
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadNewerRef = useRef<HTMLDivElement | null>(null);
   const expandAdjustRef = useRef<{ scroller: HTMLElement; prevHeight: number } | null>(null);
 
   const expandWindow = useCallback(() => {
@@ -512,6 +531,28 @@ function ChatMessagesComponent({
     if (scroller) expandAdjustRef.current = { scroller, prevHeight: scroller.scrollHeight };
     setVisibleCount((c) => Math.min(messages.length, c + EXPAND_STEP));
   }, [messages.length]);
+
+  const expandNewer = useCallback(() => {
+    // 先脱离底部跟随：内容在下方增长时，跟随锁会把视图拽到新的底部，读到一半被跳过
+    stickContextRef?.current?.stopScroll?.();
+    setTailCap((cap) => (cap === null || cap + EXPAND_NEWER >= messages.length ? null : cap + EXPAND_NEWER));
+  }, [messages.length, stickContextRef]);
+
+  // 导航条跳转：目标不在已渲染区间时，以目标为中心重设区间（前留 1 条保证上下文，后取 JUMP_AHEAD 条）
+  const navBridge = useContext(ChatNavBridgeContext);
+  useLayoutEffect(() => {
+    if (!navBridge) return;
+    navBridge.current.ensureVisible = (id: string) => {
+      const idx = messages.findIndex((m) => m.id === id);
+      if (idx < 0 || (idx >= windowStartIndex && idx < windowEndIndex)) return;
+      const start = Math.max(0, idx - 1);
+      setVisibleCount(messages.length - start);
+      setTailCap(idx + JUMP_AHEAD >= messages.length ? null : idx + JUMP_AHEAD);
+    };
+    return () => {
+      if (navBridge.current.ensureVisible) navBridge.current.ensureVisible = undefined;
+    };
+  });
 
   // 扩展后用新增高度差补偿 scrollTop，保持视口内容不跳
   // biome-ignore lint/correctness/useExhaustiveDependencies: visibleCount 是刻意的触发依赖（effect 体只读 ref），等扩展渲染提交后再补偿
@@ -539,6 +580,22 @@ function ChatMessagesComponent({
     io.observe(el);
     return () => io.disconnect();
   }, [windowActive, expandWindow]);
+
+  // 区间浏览的底部占位：下滑接近时渐进补齐较新的消息
+  const newerPending = windowEndIndex < messages.length;
+  useEffect(() => {
+    const el = loadNewerRef.current;
+    if (!el || !newerPending) return;
+    const root = findScrollableAncestor(el);
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) expandNewer();
+      },
+      { root, rootMargin: "0px 0px 200px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [newerPending, expandNewer]);
 
   const getFilteredTextFromDOM = (messageId: string): string => {
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
@@ -1191,6 +1248,20 @@ function ChatMessagesComponent({
         </div>
       )}
       <ChatContainerScrollAnchor />
+      {newerPending && (
+        <div
+          ref={loadNewerRef}
+          className={cn("mx-auto w-full", wideChatLayout ? "max-w-5xl" : "max-w-3xl", isChatPage ? "px-4" : "px-2")}
+        >
+          <button
+            type="button"
+            onClick={expandNewer}
+            className="w-full rounded-lg border border-neutral-300 border-dashed py-1.5 text-neutral-500 text-xs hover:bg-muted dark:border-neutral-700 dark:text-neutral-400"
+          >
+            还有 {messages.length - windowEndIndex} 条较新的消息，点击或下滑加载
+          </button>
+        </div>
+      )}
       {selectionState?.showPopup && (
         <ChatSelectionPopup
           selectedText={selectionState.selectedText}
