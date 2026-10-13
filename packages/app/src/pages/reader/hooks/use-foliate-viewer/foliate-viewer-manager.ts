@@ -227,7 +227,8 @@ export class FoliateViewerManager {
       doc.addEventListener("mousedown", (event: MouseEvent) => handleMousedown(bookId, event));
       doc.addEventListener("mouseup", (event: MouseEvent) => handleMouseup(bookId, event));
       doc.addEventListener("mousemove", (event: MouseEvent) => handleMouseMove(bookId, event));
-      doc.addEventListener("wheel", (event: WheelEvent) => handleWheel(bookId, event));
+      // 非被动：document 级 wheel 默认被动，滑轨上的 preventDefault（竖直滚轮换算横向滚动）才能生效
+      doc.addEventListener("wheel", (event: WheelEvent) => handleWheel(bookId, event), { passive: false });
       doc.addEventListener("keydown", (event: KeyboardEvent) => handleKeydown(bookId, event));
       // D3+T4：图片右键主题菜单 / 点击大图预览（宿主层经 postMessage 接收）
       doc.addEventListener("contextmenu", (event: MouseEvent) => handleImageContextMenu(bookId, event));

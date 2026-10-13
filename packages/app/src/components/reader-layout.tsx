@@ -16,6 +16,7 @@ import VerticalTabBar from "@/components/vertical-tab-bar";
 import WindowControls from "@/components/window-controls";
 import { useFontEvents } from "@/hooks/use-font-events";
 import { useMotionMode } from "@/hooks/use-motion-mode";
+import { useRailWheel } from "@/hooks/use-rail-wheel";
 import { useSyncEvents } from "@/hooks/use-sync-events";
 import PaperReaderView from "@/pages/paper-reader/paper-reader-view";
 import ReaderViewer from "@/pages/reader";
@@ -220,6 +221,7 @@ export default function ReaderLayout() {
   useFontEvents();
   useSyncEvents();
   useMotionMode();
+  useRailWheel();
   const {
     tabs,
     activeTabId,

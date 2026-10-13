@@ -28,14 +28,37 @@ export const viewPagination = (
   return side === "left" ? view.goLeft() : view.goRight();
 };
 
+/** 滚轮翻页手势判定：鼠标滚轮每格（|deltaY|≥50）翻一页，最短间隔 140ms；触控板（小增量、带惯性）
+ *  只在新手势（静默 ≥200ms）或反向时翻一页，惯性尾巴不再连翻 */
+const wheelGate = { last: 0, flipAt: 0, dir: 0 };
+function shouldFlipOnWheel(deltaY: number): boolean {
+  const dir = Math.sign(deltaY);
+  if (!dir) return false;
+  const now = performance.now();
+  const gap = now - wheelGate.last;
+  wheelGate.last = now;
+  if (Math.abs(deltaY) >= 50) {
+    if (now - wheelGate.flipAt < 140) return false;
+    wheelGate.flipAt = now;
+    wheelGate.dir = dir;
+    return true;
+  }
+  if (gap >= 200 || dir !== wheelGate.dir) {
+    wheelGate.flipAt = now;
+    wheelGate.dir = dir;
+    return true;
+  }
+  return false;
+}
+
 export const usePagination = (bookId: string, containerRef: React.RefObject<HTMLDivElement>) => {
-  const { settings } = useAppSettingsStore();
   const store = useReaderStoreApi();
-  const globalViewSettings = settings.globalViewSettings!;
 
-  const view = store.getState().view;
-
+  // 消息监听只在首次渲染注册一次：这里必须在事件触发时现取设置与 view，
+  // 否则捕获的是首次渲染时的值（切换分页/滚动模式后滚轮翻页永远按旧模式判断，view 也可能还是 null）
   const handlePageFlip = async (msg: MessageEvent | CustomEvent | React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    const globalViewSettings = useAppSettingsStore.getState().settings.globalViewSettings!;
+    const view = store.getState().view;
     if (msg instanceof MessageEvent) {
       if (msg.data && msg.data.bookId === bookId) {
         if (msg.data.type === "iframe-single-click") {
@@ -75,10 +98,9 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
         } else if (msg.data.type === "iframe-wheel" && !globalViewSettings.scrolled) {
           // The wheel event is handled by the iframe itself in scrolled mode.
           const { deltaY } = msg.data;
-          if (deltaY > 0) {
-            view?.next(1);
-          } else if (deltaY < 0) {
-            view?.prev(1);
+          if (shouldFlipOnWheel(deltaY)) {
+            if (deltaY > 0) view?.next(1);
+            else view?.prev(1);
           }
         } else if (msg.data.type === "iframe-mouseup") {
           if (msg.data.button === 3) {
@@ -113,6 +135,8 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
   };
 
   const handleContinuousScroll = (mode: ScrollSource, scrollDelta: number, threshold: number) => {
+    const globalViewSettings = useAppSettingsStore.getState().settings.globalViewSettings!;
+    const view = store.getState().view;
     const renderer = view?.renderer;
     if (renderer && globalViewSettings.scrolled && globalViewSettings.continuousScroll) {
       const doScroll = () => {

@@ -5,6 +5,7 @@ import {
 } from "@/services/constants";
 import { eventDispatcher } from "@/utils/event";
 import { getOSPlatform } from "@/utils/misc";
+import { createWheelRailState, handleRailWheel } from "@/utils/wheel-rails";
 
 const doubleClickEnabled = !DISABLE_DOUBLE_CLICK_ON_MOBILE || !["android", "ios"].includes(getOSPlatform());
 
@@ -152,39 +153,15 @@ export const handleMouseMove = (bookId: string, event: MouseEvent) => {
   );
 };
 
+const wheelRailState = createWheelRailState();
+
 export const handleWheel = (bookId: string, event: WheelEvent) => {
-  // 可滚动内容（超宽公式导轨 / 超宽表格滚动框）上的滚轮不转发翻页，让内容原生滚动；
-  // 滚到头后放行，滚动链接续翻页。公式只横向，表格横纵皆可
+  // 可滚动内容（超宽公式导轨 / 超宽表格滚动框）上的滚轮优先给内容自己（公式竖直滚轮换算为横向），
+  // 滚到头且停顿后才放行给翻页（见 utils/wheel-rails.ts）。注册方须以 passive:false 挂监听，否则 preventDefault 无效
   const rail = (event.target as Element | null)?.closest?.(
     'math[display="block"][data-sr-overflowx], .sageread-rawmath[data-sr-overflowx], .sr-table-scroll',
-  );
-  if (rail) {
-    const canXForward = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 1;
-    const canXBackward = rail.scrollLeft > 0;
-    const canYForward = rail.scrollTop + rail.clientHeight < rail.scrollHeight - 1;
-    const canYBackward = rail.scrollTop > 0;
-    const dx = event.deltaX;
-    const dy = event.deltaY;
-    // 斜向滚轮（触控板双指斜滑）：Chromium 轴锁一次只给一个轴——手动双轴同发，
-    // 横纵导轨同时响应（用户实测体感诉求）；任一轴到头则该轴分量自然夹紧为 0
-    if (rail.classList.contains("sr-table-scroll") && dx !== 0 && dy !== 0) {
-      const xOk = (dx > 0 && canXForward) || (dx < 0 && canXBackward);
-      const yOk = (dy > 0 && canYForward) || (dy < 0 && canYBackward);
-      if (xOk || yOk) {
-        event.preventDefault();
-        rail.scrollLeft += dx;
-        rail.scrollTop += dy;
-        return;
-      }
-    }
-    if (
-      (dx > 0 && canXForward) || (dx < 0 && canXBackward) ||
-      (dy > 0 && (canYForward || (!canYBackward && canXForward))) ||
-      (dy < 0 && (canYBackward || (!canYForward && canXBackward)))
-    ) {
-      return;
-    }
-  }
+  ) as HTMLElement | null;
+  if (rail && handleRailWheel(event, rail, wheelRailState)) return;
   window.postMessage(
     {
       type: "iframe-wheel",
