@@ -87,6 +87,13 @@ const expression = `
   check("grok-4.7 xhigh→xhigh", po("grok", "grok-4.7", "xhigh")?.openai?.reasoningEffort === "xhigh", "");
   check("grok-4.7 档位五档", JSON.stringify(m.getReasoningOptions("grok-4.7")) === JSON.stringify(["none", "low", "medium", "high", "xhigh"]), "");
   check("claude-opus-5-5 无思考行（anthropic 通道未分派，不加行防死档位）", m.getReasoningOptions("claude-opus-5-5").length === 0 && po("anthropic", "claude-opus-5-5", "high") === undefined, "");
+  // ---- 2026-10-14 批次：GPT-6.1 Sol（恒思考五档，none/minimal 不支持——OpenAI 型号页+官方 reasoning 指南） ----
+  check("openai gpt-6.1-sol max→max", po("openai", "gpt-6.1-sol", "max")?.openai?.reasoningEffort === "max", "");
+  check("openai gpt-6.1-sol low→low", po("openai", "gpt-6.1-sol", "low")?.openai?.reasoningEffort === "low", "");
+  check("gpt-6.1-sol 档位五档无 none", JSON.stringify(m.getReasoningOptions("gpt-6.1-sol")) === JSON.stringify(["low", "medium", "high", "xhigh", "max"]), "");
+  check("gpt-6.1-sol-pro 前缀命中同行", JSON.stringify(m.getReasoningOptions("gpt-6.1-sol-pro")) === JSON.stringify(["low", "medium", "high", "xhigh", "max"]), "");
+  check("mistral-large-4/muse-wonder/step-5-preview 无思考行（原生端点无分派，不加行防死档位）",
+    m.getReasoningOptions("mistral-large-4").length === 0 && m.getReasoningOptions("muse-wonder").length === 0 && m.getReasoningOptions("step-5-preview").length === 0, "");
   check("不认识端点→null", bp("custom", "https://example.com", "x", "off") === null, "");
 
   return checks;

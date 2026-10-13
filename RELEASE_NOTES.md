@@ -37,7 +37,7 @@
 ## 🧠 模型支持
 
 - 新增视觉（图像输入）收录：GPT-6.1 Sol、Claude Sonnet 5.5 / Haiku 5.5、Mistral Large 4、Meta Muse Wonder
-- 随安装包兜底的模型表同步到最新：MiMo-V2.6 系列、Claude Opus 5.5、GPT-6 Sol / Luna、Grok 4.7 等（模型表同时支持不发版热更新）
+- 随安装包兜底的模型表同步到最新：MiMo-V2.6 系列、Claude Opus 5.5、GPT-6 Sol / Luna、Grok 4.7、GPT-6.1 Sol（思考五档）等（模型表同时支持不发版热更新）
 
 ---
 

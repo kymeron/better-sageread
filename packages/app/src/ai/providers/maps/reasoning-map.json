@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-23",
+  "updatedAt": "2026-10-14",
   "models": {
     "o1": {
       "alwaysOn": false,
@@ -131,6 +131,12 @@
       "alwaysOn": false,
       "offParam": "none",
       "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+      "transport": "effort"
+    },
+    "gpt-6.1-sol": {
+      "alwaysOn": true,
+      "offParam": null,
+      "levels": ["low", "medium", "high", "xhigh", "max"],
       "transport": "effort"
     },
     "gemini-2.5-pro": {

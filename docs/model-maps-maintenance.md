@@ -68,6 +68,23 @@
 
 ## 4. 已知挂账
 
+- 2026-10-14 批次核实结论：
+  - **gpt-6.1-sol 已入表**（恒思考五档 low/medium/high/xhigh/max，none/minimal 不支持）：
+    OpenAI reasoning 指南（默认 medium）+ DataCamp 引官方型号页（none/minimal 明确不支持）。
+    `-pro` 变体靠前缀命中同行。OpenAI/OpenRouter 通道直接生效。
+  - **step-5-preview**：StepFun 官方推理接入文档（platform.stepfun.com/docs/zh/step-plan/
+    integrations/reasoning-api）确认三档 low/medium/high，Chat Completion 用 `reasoning_effort`、
+    Messages 用 `output_config.effort`，官方文档未提思考开关。**未入表**：客户端无 stepfun
+    端点分派分支（通道 B 无 host 匹配），加行 = 死档位（同 Anthropic 口径）；如需支持，
+    先补 stepfun 分派代码（随发布版出去），再入表。
+  - **mistral-large-4**：Mistral 文档确认支持 `reasoning_effort`（同族口径
+    none/low/medium/high），但官方文档站当日抓取不可达、未经一手核实，且无 mistral
+    端点分派分支。**未入表**，待官方文档复核 + 补分派代码。
+  - **muse-wonder**：OpenRouter 目录确认支持 reasoning/reasoning_effort；二手源
+    （ZenMux）称五档 low~max、Meta 官方文档（dev.meta.ai/docs/reasoning）当日不可达，
+    "Muse Wonder Full 另有 max" 暗示普通版到 xhigh——档位边界未坐实，且无 meta
+    端点分派分支。**未入表**，待官方文档复核。
+
 - 存量 `mimo-v2.5` 等三行是 budget 型（`enable_thinking`），与小米官方
   `thinking:{type}` 口径不一致（疑似按阿里云托管文档收录），待核实修订。
 - 两个冒烟脚本存在与表演进脱节的既有断言（2026-09-22 盘点：视觉 6 条、思考 17 条），
