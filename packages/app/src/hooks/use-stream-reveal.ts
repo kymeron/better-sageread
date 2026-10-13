@@ -50,8 +50,8 @@ const MIST_CUSHION = 12;
 /** 水痕最大着色浓度（%） */
 const WET_MAX = 85;
 /** 雾层级 / 水痕层级量化档数；每帧索引的尾部字符上限 */
-const HL_F = 12;
-const HL_W = 10;
+const HL_F = 9;
+const HL_W = 8;
 const HL_KMAX = 720;
 /** 乱码字符池：不含任何 markdown/公式语法字符（# $ * _ > - + = < 等落在行首或成对时会让结构瞬时跳变） */
 const SCR_POOL = "01アイウエオカキクケコサシスセソタチツテトナニヌネノabcxyzXYZ/·";
@@ -115,6 +115,8 @@ interface RevealState {
   tailOffs: number[];
   tailSrc: number[];
   owned: { name: string; range: Range }[];
+  /** 本实例持有高亮注册的引用（见 acquireHighlights） */
+  hlHeld: boolean;
 }
 
 function freshState(): RevealState {
@@ -143,6 +145,7 @@ function freshState(): RevealState {
     tailOffs: [],
     tailSrc: [],
     owned: [],
+    hlHeld: false,
   };
 }
 
@@ -229,52 +232,82 @@ function highlightsSupported(): boolean {
 
 const hlGroups = new Map<string, Highlight>();
 let hlStyleEl: HTMLStyleElement | null = null;
+let hlRefs = 0;
 
-function hlName(f: number, w: number): string {
-  return `rv-m-${f}-${w}`;
+/** 前沿层水痕着色分三档（%）：前沿字都很"新"，通常恒为满浓度，细分无意义；仅流停顿时才会变淡 */
+const FRONT_TINTS = [0, 42, WET_MAX];
+const frontName = (f: number, c: number) => `rv-mf${f}-${c}`;
+const wetName = (w: number) => `rv-mw${w}`;
+
+function mistRule(name: string, f: number, tint: number): string {
+  const e = f / (HL_F - 1);
+  const g = smooth(Math.max(0, Math.min(1, (e - 0.3) / 0.7)));
+  const glyphA = Math.round(e * g * 100);
+  const shadowA = Math.min(100, Math.round(e * (1 - g) * 150));
+  const blur = ((1 - e) * 2 * MIST_SIGMA).toFixed(2);
+  const base = tint > 0 ? `color-mix(in oklab, var(--rv-accent) ${tint}%, var(--rv-fg))` : "var(--rv-fg)";
+  let color = base;
+  let shadow = "none";
+  if (f === 0) {
+    color = "transparent";
+  } else if (f < HL_F - 1) {
+    color = `color-mix(in oklab, ${base} ${glyphA}%, transparent)`;
+    if (shadowA > 0) shadow = `0 0 ${blur}px color-mix(in oklab, ${base} ${shadowA}%, transparent)`;
+  }
+  return `::highlight(${name}){color:${color};text-shadow:${shadow}}`;
 }
 
 /**
- * 预注册高亮组 + 样式：f 档 = 雾层级（0 全透明 … HL_F-1 无雾），w 档 = 水痕层级（0 无着色 … HL_W-1 满浓度）。
- * 雾层字形/阴影交叉淡化：e 低时字形透明、由 text-shadow 的模糊副本呈现（模糊拷贝随半径增大自然变淡），
- * e 升高时字形淡入、阴影褪去，近似 demo 的 opacity+filter:blur 组合。
- * 颜色取自元素上的 --rv-accent / --rv-fg（hook 在 wrap 上设置，高亮伪元素继承自定义属性）。
+ * 注册高亮组 + 样式：雾层级 f（0 全透明 … HL_F-2 近乎清晰）× 水痕三档，另有 HL_W-1 个"无雾仅着色"组。
+ * 雾层字形/阴影交叉淡化：e 低时字形透明、由 text-shadow 的模糊副本呈现，e 升高时字形淡入、阴影褪去，
+ * 近似 demo 的 opacity+filter:blur 组合。颜色取自元素上的 --rv-accent / --rv-fg（hook 在 wrap 上设置）。
  */
-function ensureMistHighlights(): void {
-  if (hlStyleEl?.isConnected) return;
+function buildMistHighlights(): void {
   const rules: string[] = [];
-  for (let f = 0; f < HL_F; f++) {
-    const e = f / (HL_F - 1);
-    const g = smooth(Math.max(0, Math.min(1, (e - 0.3) / 0.7)));
-    const glyphA = Math.round(e * g * 100);
-    const shadowA = Math.min(100, Math.round(e * (1 - g) * 150));
-    const blur = ((1 - e) * 2 * MIST_SIGMA).toFixed(2);
-    for (let w = 0; w < HL_W; w++) {
-      if (f === HL_F - 1 && w === 0) continue; // 无雾无着色 = 不挂高亮
-      if (f === 0 && w > 0) continue; // 全透明与着色无关
-      const name = hlName(f, w);
-      const tint = Math.round((w / (HL_W - 1)) * WET_MAX);
-      const base = tint > 0 ? `color-mix(in oklab, var(--rv-accent) ${tint}%, var(--rv-fg))` : "var(--rv-fg)";
-      let color = base;
-      let shadow = "none";
-      if (f === 0) {
-        color = "transparent";
-      } else if (f < HL_F - 1) {
-        color = `color-mix(in oklab, ${base} ${glyphA}%, transparent)`;
-        if (shadowA > 0) shadow = `0 0 ${blur}px color-mix(in oklab, ${base} ${shadowA}%, transparent)`;
-      }
-      rules.push(`::highlight(${name}){color:${color};text-shadow:${shadow}}`);
-      if (!hlGroups.has(name)) {
-        const hl = new Highlight();
-        hlGroups.set(name, hl);
-        CSS.highlights.set(name, hl);
-      }
+  const add = (name: string, rule: string) => {
+    rules.push(rule);
+    if (!hlGroups.has(name)) {
+      const hl = new Highlight();
+      hlGroups.set(name, hl);
+      CSS.highlights.set(name, hl);
     }
+  };
+  add(frontName(0, 0), mistRule(frontName(0, 0), 0, 0));
+  for (let f = 1; f < HL_F - 1; f++) {
+    for (let c = 0; c < FRONT_TINTS.length; c++) add(frontName(f, c), mistRule(frontName(f, c), f, FRONT_TINTS[c]));
   }
+  for (let w = 1; w < HL_W; w++)
+    add(wetName(w), mistRule(wetName(w), HL_F - 1, Math.round((w / (HL_W - 1)) * WET_MAX)));
   hlStyleEl = document.createElement("style");
   hlStyleEl.setAttribute("data-rv-highlights", "");
   hlStyleEl.textContent = rules.join("\n");
   document.head.appendChild(hlStyleEl);
+}
+
+function teardownMistHighlights(): void {
+  for (const name of hlGroups.keys()) CSS.highlights.delete(name);
+  hlGroups.clear();
+  hlStyleEl?.remove();
+  hlStyleEl = null;
+}
+
+/**
+ * 引用计数式注册：仅当有消息正在做 mist 揭示时才把高亮名注册进 CSS.highlights。
+ * 实测（7800 元素的页面）：每个已注册的 ::highlight 名都会让浏览器在每次样式重算时对每个元素逐名解析，
+ * 110 个名常驻 → 一次整页样式重算 5.7s（主题注入/换档位/切页面层全部中招）。所以闲置时必须全部注销。
+ */
+function acquireHighlights(s: RevealState): void {
+  if (s.hlHeld) return;
+  s.hlHeld = true;
+  if (hlRefs++ === 0) buildMistHighlights();
+}
+
+function releaseHighlights(s: RevealState): void {
+  hlClear(s);
+  if (!s.hlHeld) return;
+  s.hlHeld = false;
+  hlRefs = Math.max(0, hlRefs - 1);
+  if (hlRefs === 0) teardownMistHighlights();
 }
 
 function hlClear(s: RevealState): void {
@@ -356,7 +389,9 @@ function paintMist(s: RevealState, now: number): void {
         }
       }
     }
-    const key = f === HL_F - 1 && w === 0 ? "" : hlName(f, w);
+    let key = "";
+    if (f < HL_F - 1) key = f === 0 ? frontName(0, 0) : frontName(f, w === 0 ? 0 : w <= (HL_W - 1) / 2 ? 1 : 2);
+    else if (w > 0) key = wetName(w);
     if (key !== runKey) {
       flush(k);
       runKey = key;
@@ -386,10 +421,14 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
     const wrap = wrapRef.current;
     const s = stRef.current;
     if (!wrap) return;
-    ensureMistHighlights();
+    // 历史消息 / 已收尾的框：什么都不做（不注册高亮名、不读样式、不写 CSS 变量）
+    // s.text 为空 = 初始化 effect 尚未跑过（首次挂载）：此时 shown 还是初始 0，不能据此判为"未揭示完"
+    const live = streamingRef.current || (s.text !== "" && s.shown < textRef.current.length);
+    if (s.finished || !live) return;
+    acquireHighlights(s);
     indexTail(wrap, s, display);
     setupMistVars(wrap, s);
-    if (!s.finished) paintMist(s, performance.now());
+    paintMist(s, performance.now());
   }, [display, effect]);
 
   useEffect(() => {
@@ -398,7 +437,7 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
     // 效果切换/首次挂载：清 overlay/高亮、揭示位追平当前到达位（已到达部分不补动画，新到达继续揭示）。
     // 非流式挂载（历史消息）直接标记收尾——不起 rAF、不建叠层、不读布局
     clearOverlays(s);
-    hlClear(s);
+    releaseHighlights(s);
     const initial = textRef.current;
     Object.assign(s, freshState(), {
       overlays: s.overlays,
@@ -435,7 +474,7 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
       if (!text.startsWith(s.text)) {
         const keep = s.overlays;
         clearOverlays(s);
-        hlClear(s);
+        releaseHighlights(s);
         Object.assign(s, freshState(), { overlays: keep });
         setDisplay("");
       }
@@ -450,7 +489,7 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
 
       if (effect === "mist") {
         const hl = highlightsSupported();
-        if (hl) ensureMistHighlights();
+        if (hl) acquireHighlights(s);
         if (streamingNow) s.sweep = 0;
         s.disp += (received - s.disp) * (1 - Math.exp(-dt / TAU));
         if (received - s.disp < 0.02) s.disp = received;
@@ -483,7 +522,7 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
         if (hl) paintMist(s, now);
         const ended = !streamingNow && s.shown >= received;
         idle = ended && edge >= received + (hl ? MIST_N : 0) && (!hl || now - s.lastCrossT >= DRY);
-        if (idle) hlClear(s);
+        if (idle) releaseHighlights(s);
       } else if (effect === "type") {
         if (s.shown < received) {
           s.acc += dt;
@@ -556,7 +595,7 @@ export function useStreamReveal(text: string, streaming: boolean, enabled = true
       raf = 0;
       kickRef.current = null;
       clearOverlays(stRef.current);
-      hlClear(stRef.current);
+      releaseHighlights(stRef.current);
     };
   }, [active, effect]);
 
