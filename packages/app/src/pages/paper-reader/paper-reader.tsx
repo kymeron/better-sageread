@@ -1,6 +1,7 @@
 import { InlineMathText } from "@/components/markdown/inline-math-text";
 import { ImagePreviewOverlay } from "@/components/media/image-interactions";
 import { useAppSettingsStore } from "@/store/app-settings-store";
+import { getPaperHighlightRegistry } from "@/styles/paper-highlight-css";
 import type { BookNote, HighlightColor, HighlightStyle } from "@/types/book";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -179,11 +180,12 @@ const readDefaultStyleColor = (): { style: HighlightStyle; color: HighlightColor
   return { style, color: readSettings.highlightStyles[style] };
 };
 
-const getHighlightRegistry = () => (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+// 经代理注册表读写：高亮名注册时才把它的 ::highlight 规则挂进页面（见 styles/paper-highlight-css.ts）
+const getHighlightRegistry = getPaperHighlightRegistry;
 
 /**
  * 标注高亮联合注册表（2026-08-08 修复多 tab 互相清空高亮）：
- * CSS 的 ::highlight() 名是静态的（index.css 固定 15+15 个），多个 PaperReader 实例
+ * CSS 的 ::highlight() 名是静态的（styles/paper-highlight-css.ts 固定 15+15 个），多个 PaperReader 实例
  * （多篇论文 tab 同时挂载）若各自 delete→set 同名条目，后跑的实例会把先跑实例的
  * Range 清掉——最后挂载的无标注论文会把全部高亮抹空。
  * 改为每实例维护独立槽位，任何实例更新后把所有存活槽位取并集写入 registry。
@@ -1532,7 +1534,7 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
   // 当前匹配项：单独高亮 + 容器内滚动定位（约 1/3 视口高度处）
   // biome-ignore lint/correctness/useExhaustiveDependencies: matchVersion 作为匹配集合重算完成的信号触发本 effect（effect 内只读 matchRangesRef）
   useEffect(() => {
-    const highlightRegistry = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    const highlightRegistry = getHighlightRegistry();
     highlightRegistry?.delete(PAPER_SEARCH_CURRENT_HIGHLIGHT);
     const ranges = matchRangesRef.current;
     if (ranges.length === 0) return;
@@ -1553,7 +1555,7 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
   // 卸载时清理高亮注册
   useEffect(() => {
     return () => {
-      const highlightRegistry = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+      const highlightRegistry = getHighlightRegistry();
       highlightRegistry?.delete(PAPER_SEARCH_HIGHLIGHT);
       highlightRegistry?.delete(PAPER_SEARCH_CURRENT_HIGHLIGHT);
     };

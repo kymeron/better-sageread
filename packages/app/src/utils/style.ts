@@ -461,7 +461,12 @@ const getMirrorHighlightStyles = (isDarkMode: boolean) =>
 // 显示模式编译进 CSS（经 StyleManager 注入 iframe 的总样式表）：original=只藏译文、
 // translated=只藏原文（translation-source 类由 injectSectionTranslations 标注）、
 // bilingual=双显——切换走 setSettings → renderer.setStyles 链即时生效，无需重载章节。
-const getTranslationStyles = (mode: BookViewModeType, isDarkMode: boolean, primary: string) => `
+const getTranslationStyles = (
+  mode: BookViewModeType,
+  isDarkMode: boolean,
+  primary: string,
+  withMirrorHighlights = true,
+) => `
   .translation-source {
     ${mode === "translated" ? "display: none !important;" : ""}
   }
@@ -505,7 +510,7 @@ const getTranslationStyles = (mode: BookViewModeType, isDarkMode: boolean, prima
     background-color: color-mix(in oklab, ${primary} ${isDarkMode ? 20 : 14}%, transparent);
     box-shadow: 0 1px ${isDarkMode ? 10 : 8}px color-mix(in oklab, ${primary} ${isDarkMode ? 36 : 28}%, transparent);
   }
-  ${getMirrorHighlightStyles(isDarkMode)}
+  ${withMirrorHighlights ? getMirrorHighlightStyles(isDarkMode) : ""}
 `;
 
 export interface ThemeCode {
@@ -741,6 +746,9 @@ export const applyTranslationStyle = (viewSettings: ViewSettings) => {
     resolveBookViewMode(viewSettings),
     theme.isDarkMode,
     theme.globalPrimary,
+    // 镜像高亮注册在阅读内容 iframe 的 window 上（use-annotation-mirror），主文档里的 ::highlight 规则毫无用处，
+    // 却会让主文档每次样式重算对每个元素多解析 15 次
+    false,
   );
 
   document.head.appendChild(styleElement);

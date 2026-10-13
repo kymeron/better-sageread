@@ -628,142 +628,34 @@ foliate-view {
   color: var(--muted-foreground) !important;
 }
 
-/* ---------- 论文本文内搜索高亮（CSS Custom Highlight API） ----------
- * paper-reader.tsx 用 Range 注册：paper-search 为全部匹配，paper-search-current 为当前匹配（更深的橙色）。 */
-::highlight(paper-search) {
-  background-color: oklch(0.86 0.14 90 / 0.7);
-}
 
-.dark ::highlight(paper-search) {
-  background-color: oklch(0.6 0.13 85 / 0.65);
-}
 
-::highlight(paper-search-current) {
-  background-color: oklch(0.75 0.17 70 / 0.85);
-}
 
-.dark ::highlight(paper-search-current) {
-  background-color: oklch(0.55 0.15 65 / 0.9);
-}
 
-/* ---------- 论文标注高亮（CSS Custom Highlight API） ----------
- * paper-reader.tsx 按 笔触×颜色 聚合 Range 注册：highlight 为 paper-anno-{color}，
- * underline/squiggly 为 paper-anno-{style}-{color}；paper-anno-current 为侧栏定位的闪烁强调。
- * 五色与 services/constants.ts 的 HIGHLIGHT_COLOR_HEX 对齐（tailwind 400 色的 oklch 值）。 */
-::highlight(paper-anno-red) {
-  background-color: oklch(0.704 0.191 22.216 / 0.4);
-}
 
-.dark ::highlight(paper-anno-red) {
-  background-color: oklch(0.704 0.191 22.216 / 0.5);
-}
 
-::highlight(paper-anno-yellow) {
-  background-color: oklch(0.852 0.199 91.936 / 0.4);
-}
 
-.dark ::highlight(paper-anno-yellow) {
-  background-color: oklch(0.852 0.199 91.936 / 0.5);
-}
 
-::highlight(paper-anno-green) {
-  background-color: oklch(0.792 0.209 151.711 / 0.4);
-}
 
-.dark ::highlight(paper-anno-green) {
-  background-color: oklch(0.792 0.209 151.711 / 0.5);
-}
 
-::highlight(paper-anno-blue) {
-  background-color: oklch(0.707 0.165 254.624 / 0.4);
-}
 
-.dark ::highlight(paper-anno-blue) {
-  background-color: oklch(0.707 0.165 254.624 / 0.5);
-}
 
-::highlight(paper-anno-violet) {
-  background-color: oklch(0.702 0.183 293.541 / 0.4);
-}
 
-.dark ::highlight(paper-anno-violet) {
-  background-color: oklch(0.702 0.183 293.541 / 0.5);
-}
 
-/* 笔触变体：underline / squiggly（::highlight() 支持 text-decoration；
- * paper-reader.tsx 按 笔触×颜色 聚合注册 paper-anno-{style}-{color}，线色取对应 400 色的实色） */
-::highlight(paper-anno-underline-red) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.704 0.191 22.216);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-red) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.704 0.191 22.216);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-yellow) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.852 0.199 91.936);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-yellow) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.852 0.199 91.936);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-green) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.792 0.209 151.711);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-green) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.792 0.209 151.711);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-blue) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.707 0.165 254.624);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-blue) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.707 0.165 254.624);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-violet) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.702 0.183 293.541);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-violet) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.702 0.183 293.541);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-current) {
-  background-color: oklch(0.75 0.17 70 / 0.85);
-}
 
-.dark ::highlight(paper-anno-current) {
-  background-color: oklch(0.55 0.15 65 / 0.9);
-}
+
+/* 论文阅读器的 ::highlight() 规则（搜索 / 标注 / 译文侧镜像）已迁出到 styles/paper-highlight-css.ts，
+ * 按已注册的高亮名动态挂载——页面里每多一条 ::highlight 规则，每次样式重算每个元素都多解析一次（见该文件说明）。 */
 
 /* 图表速跳定位到图片时的闪烁强调（::highlight 对 img 替换元素不可见，用 outline 呼吸两次） */
 @keyframes paper-image-jump-flash {
@@ -784,114 +676,25 @@ foliate-view {
   animation: paper-image-jump-flash 1.2s ease-in-out 1;
 }
 
-/* ---------- 论文标注的中文侧映射高亮（T2，CSS Custom Highlight API） ----------
- * 英文标注经句对齐映射到译文区的镜像高亮：paper-reader.tsx 注册 paper-anno-{color}-tgt
- * 与 paper-anno-{style}-{color}-tgt，与原名同色但透明度略低（highlight 0.22/0.3，线色 55%），
- * 用于区分"事实源侧"与"映射侧"。 */
-::highlight(paper-anno-red-tgt) {
-  background-color: oklch(0.704 0.191 22.216 / 0.22);
-}
 
-.dark ::highlight(paper-anno-red-tgt) {
-  background-color: oklch(0.704 0.191 22.216 / 0.3);
-}
 
-::highlight(paper-anno-yellow-tgt) {
-  background-color: oklch(0.852 0.199 91.936 / 0.22);
-}
 
-.dark ::highlight(paper-anno-yellow-tgt) {
-  background-color: oklch(0.852 0.199 91.936 / 0.3);
-}
 
-::highlight(paper-anno-green-tgt) {
-  background-color: oklch(0.792 0.209 151.711 / 0.22);
-}
 
-.dark ::highlight(paper-anno-green-tgt) {
-  background-color: oklch(0.792 0.209 151.711 / 0.3);
-}
 
-::highlight(paper-anno-blue-tgt) {
-  background-color: oklch(0.707 0.165 254.624 / 0.22);
-}
 
-.dark ::highlight(paper-anno-blue-tgt) {
-  background-color: oklch(0.707 0.165 254.624 / 0.3);
-}
 
-::highlight(paper-anno-violet-tgt) {
-  background-color: oklch(0.702 0.183 293.541 / 0.22);
-}
 
-.dark ::highlight(paper-anno-violet-tgt) {
-  background-color: oklch(0.702 0.183 293.541 / 0.3);
-}
 
-::highlight(paper-anno-underline-red-tgt) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.704 0.191 22.216 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-red-tgt) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.704 0.191 22.216 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-yellow-tgt) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.852 0.199 91.936 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-yellow-tgt) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.852 0.199 91.936 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-green-tgt) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.792 0.209 151.711 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-green-tgt) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.792 0.209 151.711 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-blue-tgt) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.707 0.165 254.624 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-blue-tgt) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.707 0.165 254.624 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-underline-violet-tgt) {
-  text-decoration-line: underline;
-  text-decoration-color: oklch(0.702 0.183 293.541 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
-::highlight(paper-anno-squiggly-violet-tgt) {
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: oklch(0.702 0.183 293.541 / 0.55);
-  text-decoration-thickness: 2px;
-}
 
 /* ---------- 论文句子悬浮高亮（覆盖层 div） ----------
  * CSS Highlight API 不支持 box-shadow，故 paper-reader.tsx 按句子 Range 的 getClientRects
