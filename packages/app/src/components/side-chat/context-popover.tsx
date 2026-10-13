@@ -104,7 +104,7 @@ export function ContextPopover({ activeBookId, setActiveBookId }: ContextPopover
                 books.map((book: SimpleBook) => (
                   <div
                     key={book.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-md p-1 px-2 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    className="flex cursor-pointer items-center gap-2 rounded-md p-1 px-2 hover:bg-accent hover:text-accent-foreground"
                     onClick={() => handleSelectBook(book.id)}
                   >
                     <BookOpen className="size-4 flex-shrink-0 text-neutral-500" />

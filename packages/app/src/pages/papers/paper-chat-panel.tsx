@@ -260,7 +260,7 @@ export function PaperChatPanel({
                 setInput(text);
                 void handleSubmit(text);
               }}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary/30 dark:hover:bg-neutral-800/80"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <span className="flex items-center gap-3 text-neutral-800 text-sm dark:text-neutral-200">{text}</span>
             </div>
@@ -452,7 +452,7 @@ export function PaperChatPanel({
                 flattenTree(folderTree).map(({ node, depth }) => (
                   <label
                     key={node.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
                     style={{ marginInlineStart: `${depth * 16}px` }}
                   >
                     <Checkbox

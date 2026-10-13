@@ -17,6 +17,8 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // glow：与图书库卡片同口径的主题色柔光 hover（.hover-glow，见 index.css），用于需要明显 hover 反馈且随主题变色的胶囊按钮
+        glow: "hover-glow border border-transparent bg-secondary text-secondary-foreground",
         soft: "bg-neutral-300/60 text-neutral-900 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-700",
       },
       size: {

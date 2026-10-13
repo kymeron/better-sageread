@@ -256,7 +256,7 @@ const sidebarItemClass = (active: boolean) =>
     "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
     active
       ? "bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-      : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800/60",
+      : "text-neutral-600 hover:bg-accent hover:text-accent-foreground dark:hover:text-accent-foreground dark:text-neutral-400",
   );
 
 /** 树形铺平（移动到对话框用，全部展开，带缩进深度） */
@@ -293,7 +293,7 @@ function FolderTreeItem({
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   const hoverButtonClass =
-    "rounded p-0.5 text-neutral-400 hover:bg-neutral-300/60 hover:text-neutral-600 dark:hover:bg-neutral-600 dark:hover:text-neutral-300";
+    "rounded p-0.5 text-neutral-400 hover:bg-accent hover:text-accent-foreground";
 
   return (
     <div>
@@ -304,7 +304,7 @@ function FolderTreeItem({
           "group flex w-full cursor-pointer items-center gap-1 rounded-md py-1.5 pr-1 text-sm",
           isSelected
             ? "bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-            : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800/60",
+            : "text-neutral-600 hover:bg-accent hover:text-accent-foreground dark:text-neutral-400 dark:hover:text-accent-foreground",
         )}
         style={{ paddingInlineStart: `${depth * 14 + 4}px` }}
         onClick={() => onSelect(node.id)}
@@ -1624,7 +1624,7 @@ export default function PapersPage() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+                  className="rounded p-0.5 text-neutral-400 hover:bg-accent hover:text-accent-foreground"
                   onClick={() => openCreateDialog(null)}
                 >
                   <FolderPlus className="size-3.5" />
@@ -2245,7 +2245,7 @@ export default function PapersPage() {
               flattenTree(folderTree).map(({ node, depth }) => (
                 <label
                   key={node.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
                   style={{ marginInlineStart: `${depth * 16}px` }}
                 >
                   <Checkbox

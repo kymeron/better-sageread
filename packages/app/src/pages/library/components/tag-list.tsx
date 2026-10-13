@@ -138,7 +138,7 @@ export default function TagList({
         <div className="flex items-center gap-1">
           {/* <DataCleanupButton books={books} onBookUpdate={onBookUpdate} onRefresh={onRefresh} /> */}
           <button
-            className="flex items-center justify-center rounded-full p-1 text-neutral-600 transition-colors hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-600 dark:hover:text-neutral-300"
+            className="flex items-center justify-center rounded-full p-1 text-neutral-600 transition-colors hover:bg-accent hover:text-accent-foreground"
             onClick={handleNewTagClick}
           >
             <Plus size={14} />

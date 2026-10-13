@@ -90,7 +90,7 @@ export default function PaperSearchDropdown({
                 type="button"
                 disabled={matchCount === 0}
                 onClick={gotoPrev}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-accent hover:text-accent-foreground disabled:opacity-40 dark:text-neutral-400 dark:hover:text-accent-foreground"
               >
                 <ChevronUp className="size-4" />
               </button>
@@ -103,7 +103,7 @@ export default function PaperSearchDropdown({
                 type="button"
                 disabled={matchCount === 0}
                 onClick={gotoNext}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-accent hover:text-accent-foreground disabled:opacity-40 dark:text-neutral-400 dark:hover:text-accent-foreground"
               >
                 <ChevronDown className="size-4" />
               </button>

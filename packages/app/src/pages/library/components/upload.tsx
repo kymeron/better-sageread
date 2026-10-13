@@ -59,7 +59,7 @@ export default function Upload() {
                 size="lg"
                 disabled={isUploading}
                 onClick={triggerFileSelect}
-                className="pointer-events-auto rounded-full border-neutral-300 bg-white px-8 py-3 text-base hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="pointer-events-auto rounded-full border-neutral-300 bg-white px-8 py-3 text-base hover:bg-accent hover:text-accent-foreground dark:border-neutral-600 dark:bg-neutral-800"
               >
                 导入书籍
               </Button>

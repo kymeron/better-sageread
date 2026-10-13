@@ -99,7 +99,7 @@ const EmptyState = memo(
                         e.stopPropagation();
                         fileInputRef.current?.click();
                       }}
-                      className="size-8 rounded-full dark:border-neutral-600 dark:hover:bg-neutral-700"
+                      className="size-8 rounded-full dark:border-neutral-600"
                     >
                       <Paperclip className="size-4" />
                     </Button>
@@ -324,7 +324,7 @@ function ChatPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-full text-neutral-600 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                className="size-8 rounded-full text-neutral-600 hover:bg-accent hover:text-accent-foreground dark:text-neutral-100 dark:hover:text-accent-foreground"
                 onClick={handleShowThreads}
               >
                 <History className="size-5" />
@@ -337,7 +337,7 @@ function ChatPage() {
                 variant="ghost"
                 size="icon"
                 title={wideChatLayout ? "切换到标准布局" : "切换到宽版布局"}
-                className={`size-8 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+                className={`size-8 rounded-full hover:bg-accent hover:text-accent-foreground ${
                   wideChatLayout ? "text-primary" : "text-neutral-600 dark:text-neutral-100"
                 }`}
                 onClick={() => setWideChatLayout(!wideChatLayout)}
@@ -347,7 +347,7 @@ function ChatPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-full text-neutral-600 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                className="size-8 rounded-full text-neutral-600 hover:bg-accent hover:text-accent-foreground dark:text-neutral-100 dark:hover:text-accent-foreground"
                 onClick={handleNewThread}
               >
                 <MessageCirclePlus className="size-5" />

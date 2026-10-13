@@ -206,7 +206,7 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
                 <button
                   type="button"
                   onClick={onToggleComment}
-                  className="rounded-md px-2.5 py-1 text-neutral-500 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  className="rounded-md px-2.5 py-1 text-neutral-500 text-xs hover:bg-accent hover:text-accent-foreground"
                 >
                   取消
                 </button>

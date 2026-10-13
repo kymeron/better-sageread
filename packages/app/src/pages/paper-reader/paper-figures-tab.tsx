@@ -59,7 +59,7 @@ function PaperFigureItemRow({ item, paperDir, translation, onLocate }: PaperFigu
 
   return (
     <div
-      className="group relative cursor-pointer rounded-lg bg-muted p-2 transition-colors hover:bg-neutral-200/60 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+      className="group hover-glow relative cursor-pointer rounded-lg border border-transparent bg-muted p-2 transition-colors dark:bg-neutral-900"
       onClick={onLocate}
     >
       <div className="flex items-start gap-2">

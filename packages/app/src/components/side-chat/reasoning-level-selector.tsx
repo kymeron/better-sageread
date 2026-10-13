@@ -68,7 +68,7 @@ export function ReasoningLevelSelector() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-neutral-200 px-2 text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-neutral-200 px-2 text-neutral-600 transition-colors hover:bg-accent hover:text-accent-foreground dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-accent-foreground"
               >
                 <Gauge className="size-4" />
                 <span className="text-xs">
@@ -80,7 +80,7 @@ export function ReasoningLevelSelector() {
           <TooltipContent side="bottom">思考 Token 预算（0 = 关闭，滑块连续可调）</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" className="min-w-64 p-4">
-          <div className="mb-2 flex items-center justify-between text-xs text-neutral-500">
+          <div className="mb-2 flex items-center justify-between text-neutral-500 text-xs">
             <span>{current === 0 ? "关闭" : `${current} tokens`}</span>
             <span className="text-neutral-400">max {maxBudget}</span>
           </div>
@@ -116,7 +116,7 @@ export function ReasoningLevelSelector() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-neutral-200 px-2 text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-neutral-200 px-2 text-neutral-600 transition-colors hover:bg-accent hover:text-accent-foreground dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-accent-foreground"
             >
               <Gauge className="size-4" />
               <span className="text-xs">思考·{reasoningLevelLabel(displayLevel)}</span>

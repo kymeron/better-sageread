@@ -191,7 +191,7 @@ export default function ModelSelector({
                   return (
                     <DropdownMenuItem
                       key={`${model.providerId}-${model.modelId}`}
-                      className="cursor-pointer p-2 dark:hover:bg-neutral-700"
+                      className="cursor-pointer p-2"
                       onClick={() => handleModelSelect(model)}
                     >
                       <Tooltip>

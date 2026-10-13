@@ -556,16 +556,22 @@ export default function ReaderLayout() {
           <div data-tauri-drag-region className="mx-2 flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="cursor-pointer" onClick={navigateToHome}>
-                  <HomeIcon className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+                <div
+                  className="group flex cursor-pointer items-center rounded p-0.5 transition-colors hover:bg-accent"
+                  onClick={navigateToHome}
+                >
+                  <HomeIcon className="size-5 text-neutral-700 group-hover:text-accent-foreground dark:text-neutral-400 dark:group-hover:text-accent-foreground" />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">主页</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="cursor-pointer" onClick={toggleTabOrientation}>
-                  <PanelTop className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+                <div
+                  className="group flex cursor-pointer items-center rounded p-0.5 transition-colors hover:bg-accent"
+                  onClick={toggleTabOrientation}
+                >
+                  <PanelTop className="size-5 text-neutral-700 group-hover:text-accent-foreground dark:text-neutral-400 dark:group-hover:text-accent-foreground" />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">切换到横向标签</TooltipContent>
@@ -606,16 +612,22 @@ export default function ReaderLayout() {
               <div className="mx-2 flex items-center gap-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="cursor-pointer" onClick={navigateToHome}>
-                      <HomeIcon className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+                    <div
+                      className="group flex cursor-pointer items-center rounded p-0.5 transition-colors hover:bg-accent"
+                      onClick={navigateToHome}
+                    >
+                      <HomeIcon className="size-5 text-neutral-700 group-hover:text-accent-foreground dark:text-neutral-400 dark:group-hover:text-accent-foreground" />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">主页</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="cursor-pointer" onClick={toggleTabOrientation}>
-                      <PanelLeft className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+                    <div
+                      className="group flex cursor-pointer items-center rounded p-0.5 transition-colors hover:bg-accent"
+                      onClick={toggleTabOrientation}
+                    >
+                      <PanelLeft className="size-5 text-neutral-700 group-hover:text-accent-foreground dark:text-neutral-400 dark:group-hover:text-accent-foreground" />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">切换到垂直标签</TooltipContent>

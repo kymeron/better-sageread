@@ -176,7 +176,7 @@ export default function Sidebar() {
                     <Link
                       to={item.path}
                       className={clsx(
-                        "flex flex-1 items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-muted",
+                        "flex flex-1 items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:text-accent-foreground",
                         isActive ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-700 dark:text-neutral-300",
                       )}
                     >
@@ -188,7 +188,7 @@ export default function Sidebar() {
                         <TooltipTrigger asChild>
                           <button
                             onClick={toggleLibraryExpanded}
-                            className="flex size-5 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                            className="flex size-5 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-accent hover:text-accent-foreground dark:text-neutral-300 dark:hover:text-accent-foreground"
                           >
                             {isLibraryExpanded ? (
                               <ChevronDown size={16} className="flex-shrink-0" />
@@ -207,7 +207,7 @@ export default function Sidebar() {
                   <Link
                     to={item.path}
                     className={clsx(
-                      "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-muted",
+                      "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:text-accent-foreground",
                       isActive ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-700 dark:text-neutral-300",
                     )}
                   >
@@ -243,7 +243,7 @@ export default function Sidebar() {
           <Link
             to="/manual"
             className={clsx(
-              "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-muted",
+              "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:text-accent-foreground",
               location.pathname === "/manual"
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-600 dark:text-neutral-300",
@@ -255,7 +255,7 @@ export default function Sidebar() {
           <Link
             to="/trash"
             className={clsx(
-              "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-muted",
+              "flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:text-accent-foreground",
               location.pathname === "/trash"
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-600 dark:text-neutral-300",

@@ -185,7 +185,7 @@ export function ChatInputArea({
               return (
                 <PromptInputAction key={id} tooltip={label}>
                   <Button
-                    variant="soft"
+                    variant="glow"
                     className="h-7 cursor-pointer"
                     size="sm"
                     onClick={() => handleQuickPrompt(prompt)}
@@ -238,7 +238,7 @@ export function ChatInputArea({
                   </span>
                   <button
                     type="button"
-                    className="flex size-4 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-300 hover:text-neutral-600 dark:hover:bg-neutral-600 dark:hover:text-neutral-100"
+                    className="flex size-4 items-center justify-center rounded-full text-neutral-400 hover:bg-accent hover:text-accent-foreground"
                     onClick={(event) => {
                       event.stopPropagation();
                       onRemoveFile?.(f.id);
@@ -262,7 +262,7 @@ export function ChatInputArea({
                   return (
                     <PromptInputAction key={id} tooltip={label}>
                       <Button
-                        variant="soft"
+                        variant="glow"
                         className="h-7 cursor-pointer"
                         size="sm"
                         onClick={() => handleQuickPrompt(prompt)}
@@ -371,7 +371,7 @@ export function ChatInputArea({
                     e.stopPropagation();
                     fileInputRef.current?.click();
                   }}
-                  className="size-8 rounded-full dark:border-neutral-600 dark:hover:bg-neutral-700"
+                  className="size-8 rounded-full dark:border-neutral-600"
                 >
                   <Paperclip className="size-4" />
                 </Button>

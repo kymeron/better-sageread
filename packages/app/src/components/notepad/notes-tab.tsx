@@ -59,7 +59,7 @@ function NoteCard({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          className="group cursor-pointer rounded-lg bg-muted p-2 transition-colors hover:bg-neutral-200/60 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+          className="group hover-glow cursor-pointer rounded-lg border border-transparent bg-muted p-2 transition-colors dark:bg-neutral-900"
           onClick={selectionMode ? onToggleSelect : onOpen}
         >
           <div className="flex items-start gap-2">
@@ -559,7 +559,7 @@ export function NotesTab({ bookId, bookTitle, currentLocation, tocItems, onLocat
           <button
             type="button"
             onClick={handleSelectAll}
-            className="rounded-md px-1.5 py-1 text-neutral-500 text-xs hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            className="rounded-md px-1.5 py-1 text-neutral-500 text-xs hover:bg-accent hover:text-accent-foreground dark:text-neutral-400 dark:hover:text-accent-foreground"
           >
             {allSelected ? "取消全选" : "全选"}
           </button>

@@ -147,7 +147,7 @@ export function PaperAnnotationPopup({
 
   // 与书籍 PopupButton 同款按钮样式
   const buttonClass =
-    "flex h-6 min-w-6 cursor-pointer items-center justify-center gap-1 rounded p-0 px-1 transition-colors duration-200 hover:bg-neutral-100 dark:hover:bg-neutral-700";
+    "flex h-6 min-w-6 cursor-pointer items-center justify-center gap-1 rounded p-0 px-1 transition-colors duration-200 hover:bg-accent hover:text-accent-foreground";
 
   return createPortal(
     <div
@@ -272,7 +272,7 @@ export function PaperAnnotationPopup({
             <button
               type="button"
               onClick={() => setNoteOpen(false)}
-              className="rounded-md px-2.5 py-1 text-neutral-500 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              className="rounded-md px-2.5 py-1 text-neutral-500 text-xs hover:bg-accent hover:text-accent-foreground"
             >
               取消
             </button>

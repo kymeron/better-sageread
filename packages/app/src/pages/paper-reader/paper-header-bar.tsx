@@ -162,7 +162,7 @@ export default function PaperHeaderBar({
                           "block w-full truncate rounded-md px-2 py-1.5 text-left text-sm",
                           item.id === activeHeadingId
                             ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-                            : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-300",
+                            : "text-neutral-500 hover:bg-accent hover:text-accent-foreground dark:text-neutral-400 dark:hover:text-accent-foreground",
                         )}
                         style={{ paddingLeft: `${(item.level - minTocLevel) * 12 + 8}px` }}
                         onClick={() => {

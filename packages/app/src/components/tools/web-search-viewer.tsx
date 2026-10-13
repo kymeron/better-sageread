@@ -43,7 +43,7 @@ const WebSearchViewerComponent = ({ results }: WebSearchViewerProps) => {
             onClick={() => {
               openUrl(item.url).catch(() => {});
             }}
-            className="block w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-left transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800/60"
+            className="hover-glow block w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-left transition-colors dark:border-neutral-700"
           >
             <div className="flex items-start gap-2">
               <span className="line-clamp-2 flex-1 font-medium text-neutral-800 text-sm dark:text-neutral-100">

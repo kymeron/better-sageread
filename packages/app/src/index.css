@@ -180,12 +180,14 @@
     0 0 0 3px color-mix(in oklab, var(--primary) 8%, transparent);
 }
 
-/* ---------- 书籍卡片 / 论文条目：hover 主题色柔光 ----------
+/* ---------- 书籍卡片 / 论文条目 / 通用 .hover-glow：hover 主题色柔光 ----------
+ * .hover-glow 是给其它界面（AI 中心 tab、快捷指令栏、条目卡片）复用的同口径柔光，需自带 border（可 border-transparent）。
  * 与 .chat-thread-card 同一口径：颜色过渡走动效 token（fade-only/reduced 自动压短/归零），
  * 位移与主题色光影只在 full 档启用（fade-only 只留颜色过渡）；颜色一律 color-mix 跟随 --primary。
  * dark 档背景 tint 加浓（参考 .dark .paper-sentence-hover-rect），保证深色卡面上可辨。 */
 .book-card,
-.paper-entry-card {
+.paper-entry-card,
+.hover-glow {
   transition:
     border-color var(--motion-dur-fast) var(--motion-ease),
     background-color var(--motion-dur-fast) var(--motion-ease),
@@ -194,18 +196,21 @@
 }
 
 .book-card:hover,
-.paper-entry-card:hover {
+.paper-entry-card:hover,
+.hover-glow:hover {
   border-color: color-mix(in oklab, var(--primary) 35%, transparent);
   background-color: color-mix(in oklab, var(--primary) 6%, transparent);
 }
 
 .dark .book-card:hover,
-.dark .paper-entry-card:hover {
+.dark .paper-entry-card:hover,
+.dark .hover-glow:hover {
   background-color: color-mix(in oklab, var(--primary) 10%, transparent);
 }
 
 [data-motion="full"] .book-card:hover,
-[data-motion="full"] .paper-entry-card:hover {
+[data-motion="full"] .paper-entry-card:hover,
+[data-motion="full"] .hover-glow:hover {
   transform: translateY(-1px);
   box-shadow:
     0 4px 16px -6px color-mix(in oklab, var(--primary) 32%, transparent),

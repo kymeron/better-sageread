@@ -80,7 +80,7 @@ export default function ManualPage() {
                 className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                   i === selected
                     ? "bg-primary/10 font-medium text-primary"
-                    : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    : "text-neutral-700 hover:bg-accent hover:text-accent-foreground dark:text-neutral-300 dark:hover:text-accent-foreground"
                 }`}
               >
                 {c.title}

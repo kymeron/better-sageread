@@ -245,7 +245,7 @@ export function ZoteroImportDialog({ open, onOpenChange, onCompleted, onRunningC
   const renderNode = (node: CollectionNode, depth: number) => (
     <div key={node.key}>
       <div
-        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
         style={{ marginInlineStart: `${depth * 16}px` }}
       >
         <Checkbox
@@ -456,7 +456,7 @@ export function ZoteroImportDialog({ open, onOpenChange, onCompleted, onRunningC
                   <div className="space-y-0.5 p-1.5">
                     {tree.map((node) => renderNode(node, 0))}
                     {unfiledCount > 0 && (
-                      <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
+                      <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
                         <Checkbox
                           checked={selectedKeys.has(UNFILED_KEY)}
                           onCheckedChange={(checked) =>

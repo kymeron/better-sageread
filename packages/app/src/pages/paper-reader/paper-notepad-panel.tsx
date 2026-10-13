@@ -150,7 +150,7 @@ function PaperAnnotationItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          className="group cursor-pointer rounded-lg bg-muted p-2 transition-colors hover:bg-neutral-200/60 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+          className="group hover-glow cursor-pointer rounded-lg border border-transparent bg-muted p-2 transition-colors dark:bg-neutral-900"
           onClick={selectionMode ? onToggleSelect : onLocate}
         >
           <div className="flex items-stretch gap-2">
@@ -267,7 +267,7 @@ function PaperAiHighlightItem({ annotation, onLocate, onDelete }: PaperAiHighlig
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          className="cursor-pointer rounded-lg bg-muted p-2 transition-colors hover:bg-neutral-200/60 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+          className="hover-glow cursor-pointer rounded-lg border border-transparent bg-muted p-2 transition-colors dark:bg-neutral-900"
           onClick={onLocate}
         >
           <div className="flex items-stretch gap-2">
@@ -595,7 +595,7 @@ export function PaperNotepadPanel({
             <button
               type="button"
               onClick={handleSelectAll}
-              className="rounded-md px-1.5 py-1 text-neutral-500 text-xs hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              className="rounded-md px-1.5 py-1 text-neutral-500 text-xs hover:bg-accent hover:text-accent-foreground dark:text-neutral-400 dark:hover:text-accent-foreground"
             >
               {allSelected ? "取消全选" : "全选"}
             </button>
@@ -726,7 +726,7 @@ export function PaperNotepadPanel({
               onClick={handleClearAi}
               disabled={generating || aiHighlightCount === 0}
               title="清除全部 AI 重点标注（人工与对话创建的标注不受影响）"
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-neutral-500 text-xs hover:bg-neutral-100 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-red-400"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-neutral-500 text-xs hover:bg-accent hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:text-red-400"
             >
               <Trash2 className="size-3.5" />
               清除
@@ -859,7 +859,7 @@ export function PaperNotepadPanel({
             <button
               type="button"
               onClick={() => setEditing(null)}
-              className="rounded-md px-3 py-1.5 text-neutral-500 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              className="rounded-md px-3 py-1.5 text-neutral-500 text-sm hover:bg-accent hover:text-accent-foreground"
             >
               取消
             </button>

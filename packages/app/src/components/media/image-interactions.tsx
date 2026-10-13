@@ -136,14 +136,14 @@ function ContextPopupMenu({
       >
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
           onClick={() => void run("copy")}
         >
           <Copy className="size-4 text-neutral-500" /> 复制图片
         </button>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
           onClick={() => void run("save")}
         >
           <Download className="size-4 text-neutral-500" /> 图片另存为…
@@ -151,7 +151,7 @@ function ContextPopupMenu({
         {onQuote && (
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
             onClick={() => void run("quote")}
           >
             <Quote className="size-4 text-neutral-500" /> 引用到对话

@@ -399,7 +399,7 @@ const ToolCallGroup = memo(function ToolCallGroup({
           userToggled.current = true;
           setOpen(!open);
         }}
-        className="flex w-full items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-1.5 text-left text-neutral-600 text-xs transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800/40 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        className="hover-glow flex w-full items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-1.5 text-left text-neutral-600 text-xs transition-colors dark:border-neutral-700 dark:bg-neutral-800/40 dark:text-neutral-300"
       >
         {running ? (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-neutral-400" />
@@ -1118,7 +1118,7 @@ function ChatMessagesComponent({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                              className="size-7 rounded-full"
                               disabled={!canRetry}
                               onClick={() => {
                                 onRetry?.();
@@ -1133,7 +1133,7 @@ function ChatMessagesComponent({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                      className="size-7 rounded-full"
                     >
                       <Pencil size={12} />
                     </Button>
@@ -1144,7 +1144,7 @@ function ChatMessagesComponent({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                      className="size-7 rounded-full"
                     >
                       <Trash size={12} />
                     </Button>
@@ -1157,7 +1157,7 @@ function ChatMessagesComponent({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                            className="size-7 rounded-full"
                             onClick={() => {
                               const textContent = reorderedMessage.parts
                                 .map((part: any) => (part.type === "text" ? part.text : ""))
@@ -1172,7 +1172,7 @@ function ChatMessagesComponent({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                            className="size-7 rounded-full"
                             onClick={() => {
                               void exportMessageToMarkdown(message, {
                                 threadTitle: useThreadStore.getState().currentThread?.title,
@@ -1187,7 +1187,7 @@ function ChatMessagesComponent({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                            className="size-7 rounded-full"
                             onClick={() => {
                               const { currentThread } = useThreadStore.getState();
                               void exportMessagesToImage([message], {
@@ -1206,7 +1206,7 @@ function ChatMessagesComponent({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                              className="size-7 rounded-full"
                               onClick={() => {
                                 const textContent = reorderedMessage.parts
                                   .map((part: any) => (part.type === "text" ? part.text : ""))

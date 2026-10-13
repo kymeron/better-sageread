@@ -16,7 +16,7 @@ const PopupButton: React.FC<PopupButtonProps> = ({ label, Icon, onClick, isVerti
     <div className="flex items-center justify-center">
       <button
         onClick={handleClick}
-        className={`flex cursor-pointer items-center justify-center gap-1 rounded p-0 transition-colors duration-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+        className={`flex cursor-pointer items-center justify-center gap-1 rounded p-0 transition-colors duration-200 hover:bg-accent hover:text-accent-foreground ${
           isVertical ? "h-auto w-6 flex-col px-0 py-1" : "h-6 min-w-6 px-1"
         }`}
       >

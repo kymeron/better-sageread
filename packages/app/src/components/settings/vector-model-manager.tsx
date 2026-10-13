@@ -541,7 +541,7 @@ export default function VectorModelManager() {
                     key={preset.id}
                     type="button"
                     onClick={() => applyPreset(preset.id)}
-                    className="flex flex-col items-start gap-1 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-left transition-colors hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:border-neutral-500 dark:hover:bg-neutral-700/60"
+                    className="hover-glow flex flex-col items-start gap-1 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-left transition-colors dark:border-neutral-700 dark:bg-neutral-800 dark:hover:border-neutral-500"
                   >
                     <span className="flex w-full items-center gap-1.5">
                       {preset.needKey ? (
