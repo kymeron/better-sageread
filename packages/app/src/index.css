@@ -785,23 +785,33 @@ foliate-view {
   color: oklch(0.72 0.02 260);
 }
 
-/* ---------- 聊天正文微交互（chat-md）----------
- * 三助手对话气泡内的 Markdown 元素动效。颜色全部走 --chat-* 变量：
- * 未设置变量的主题回落为中性默认（不改变既有观感）；各主题在自身 CSS 里覆盖变量注入个性。 */
+/* ---------- 聊天正文微交互 + 层级样式（chat-md）----------
+ * 三助手对话气泡内的 Markdown 元素。颜色走 --chat-* 变量（各主题在自身 CSS 里覆盖，注入个性）；
+ * 未设置的变量由 --primary 派生（--chat-accent 可整体覆盖强调色）——默认主题主色近黑/近白，
+ * 派生结果接近中性，不改变既有观感。
+ * 所有变化一律缓变：时长 = --motion-dur-base × 1.6（fade-only/reduced 档自动压短/归零），缓动走 --motion-ease；
+ * 位移/缩放类动效仅在 data-motion="full" 档启用。 */
+.chat-md {
+  --md-t: calc(var(--motion-dur-base) * 1.6);
+  --md-ease: var(--motion-ease);
+  --md-accent: var(--chat-accent, var(--primary));
+}
+
+/* 加粗 / 斜体：恒为主题特征色（hover 略加深） */
 .chat-md strong {
-  color: var(--chat-strong, inherit);
-  transition: color 0.18s ease;
+  color: var(--chat-strong, color-mix(in oklab, var(--md-accent) 72%, var(--foreground)));
+  transition: color var(--md-t) var(--md-ease);
 }
 .chat-md strong:hover {
-  color: var(--chat-strong-hover, var(--chat-strong, inherit));
+  color: var(--chat-strong-hover, var(--chat-strong, color-mix(in oklab, var(--md-accent) 92%, var(--foreground))));
 }
 
 .chat-md em {
-  color: var(--chat-em, inherit);
-  transition: color 0.18s ease;
+  color: var(--chat-em, color-mix(in oklab, var(--md-accent) 55%, var(--foreground)));
+  transition: color var(--md-t) var(--md-ease);
 }
 .chat-md em:hover {
-  color: var(--chat-em-hover, var(--chat-em, inherit));
+  color: var(--chat-em-hover, var(--chat-em, color-mix(in oklab, var(--md-accent) 85%, var(--foreground))));
 }
 
 .chat-md a {
@@ -809,7 +819,9 @@ foliate-view {
   text-decoration: underline;
   text-decoration-color: var(--chat-link-underline, transparent);
   text-underline-offset: 2px;
-  transition: color 0.18s ease, text-decoration-color 0.18s ease;
+  transition:
+    color var(--md-t) var(--md-ease),
+    text-decoration-color var(--md-t) var(--md-ease);
 }
 .chat-md a:hover {
   color: var(--chat-link-hover, var(--chat-link, inherit));
@@ -820,57 +832,108 @@ foliate-view {
 .chat-md .chat-inline-code {
   background: var(--chat-code-bg, rgba(127, 127, 127, 0.12));
   color: var(--chat-code-text, inherit);
-  transition: background-color 0.18s ease, color 0.18s ease;
+  transition:
+    background-color var(--md-t) var(--md-ease),
+    color var(--md-t) var(--md-ease);
 }
 .chat-md .chat-inline-code:hover {
   background: var(--chat-code-bg-hover, var(--chat-code-bg, rgba(127, 127, 127, 0.18)));
   color: var(--chat-code-text-hover, var(--chat-code-text, inherit));
 }
 
-/* 代码块（.chat-code-block）：hover 描边上色 */
+/* 代码块（.chat-code-block）：hover 描边上色 + 柔光，full 档轻微上浮 */
 .chat-md .chat-code-block {
   border: 1px solid transparent;
   border-radius: 8px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color var(--md-t) var(--md-ease),
+    box-shadow var(--md-t) var(--md-ease),
+    transform var(--md-t) var(--md-ease);
 }
 .chat-md .chat-code-block:hover {
-  border-color: var(--chat-codeblock-border, transparent);
-  box-shadow: var(--chat-codeblock-shadow, none);
+  border-color: var(--chat-codeblock-border, color-mix(in oklab, var(--md-accent) 38%, transparent));
+  box-shadow: var(--chat-codeblock-shadow, 0 8px 24px -12px color-mix(in oklab, var(--md-accent) 45%, transparent));
+}
+[data-motion="full"] .chat-md .chat-code-block:hover {
+  transform: translateY(-1px);
 }
 
-/* 列表：marker 上色 + hover 微移 */
+/* 列表：marker 恒带主题色 + hover 变色微移 */
 .chat-md li::marker {
-  color: var(--chat-marker, currentColor);
-  transition: color 0.18s ease;
+  color: var(--chat-marker, color-mix(in oklab, var(--md-accent) 60%, currentColor));
+  transition: color var(--md-t) var(--md-ease);
 }
 .chat-md li {
-  transition: transform 0.18s ease;
+  transition: transform var(--md-t) var(--md-ease);
 }
-.chat-md li:hover {
+[data-motion="full"] .chat-md li:hover {
   transform: translateX(2px);
 }
 .chat-md li:hover::marker {
-  color: var(--chat-marker-hover, var(--chat-marker, currentColor));
+  color: var(--chat-marker-hover, var(--chat-marker, var(--md-accent)));
 }
 
-/* 引用块：竖线上色 + hover 底纹 */
+/* 引用块：竖线上色 + 淡底纹；hover 底纹加深、竖线增粗（inset 阴影，不引起布局位移） */
 .chat-md blockquote {
-  border-left-color: var(--chat-quote-border, currentColor);
-  transition: border-color 0.18s ease, background-color 0.18s ease;
+  border-left-color: var(--chat-quote-border, color-mix(in oklab, var(--md-accent) 55%, transparent));
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in oklab, var(--md-accent) 4%, transparent);
+  box-shadow: inset 0 0 0 0 var(--chat-quote-border, color-mix(in oklab, var(--md-accent) 55%, transparent));
+  transition:
+    border-color var(--md-t) var(--md-ease),
+    background-color var(--md-t) var(--md-ease),
+    box-shadow var(--md-t) var(--md-ease),
+    transform var(--md-t) var(--md-ease);
 }
 .chat-md blockquote:hover {
-  background: var(--chat-quote-bg-hover, rgba(127, 127, 127, 0.06));
+  background: var(--chat-quote-bg-hover, color-mix(in oklab, var(--md-accent) 10%, transparent));
+  border-left-color: var(--chat-quote-border-hover, var(--md-accent));
+  box-shadow: inset 3px 0 0 0 var(--chat-quote-border-hover, var(--md-accent));
+}
+[data-motion="full"] .chat-md blockquote:hover {
+  transform: translateX(2px);
 }
 
-/* chat-md 标题：主题色 + hover 变色 + h2/h3 底部规则线淡入（border 预分配，无布局抖动） */
+/* 分割线：两端渐隐的细线；hover 变主题色 + 柔光，full 档加粗。伪元素扩大悬停热区（1px 线几乎悬停不到） */
+.chat-md hr {
+  position: relative;
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--muted-foreground) 50%, transparent), transparent);
+  transition:
+    background var(--md-t) var(--md-ease),
+    box-shadow var(--md-t) var(--md-ease),
+    transform var(--md-t) var(--md-ease);
+}
+.chat-md hr::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
+}
+.chat-md hr:hover {
+  background: linear-gradient(90deg, transparent, var(--chat-hr-hover, var(--md-accent)), transparent);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--md-accent) 40%, transparent);
+}
+[data-motion="full"] .chat-md hr:hover {
+  transform: scaleY(2);
+}
+
+/* 标题：除字号外，六级各有造型（颜色走 --chat-heading*；强调线/条由主题色派生）。
+ * 全部预分配边框/内边距，hover 只改颜色与 inset 阴影，不产生布局抖动。 */
 .chat-md h1,
 .chat-md h2,
 .chat-md h3,
 .chat-md h4,
 .chat-md h5,
 .chat-md h6 {
+  position: relative;
   color: var(--chat-heading, inherit);
-  transition: color 0.18s ease, border-color 0.18s ease;
+  transition:
+    color var(--md-t) var(--md-ease),
+    border-color var(--md-t) var(--md-ease),
+    background-color var(--md-t) var(--md-ease),
+    background-size var(--md-t) var(--md-ease),
+    box-shadow var(--md-t) var(--md-ease);
 }
 .chat-md h1:hover,
 .chat-md h2:hover,
@@ -880,14 +943,113 @@ foliate-view {
 .chat-md h6:hover {
   color: var(--chat-heading-hover, var(--chat-heading, inherit));
 }
-.chat-md h2,
-.chat-md h3 {
-  border-bottom: 1px solid var(--chat-heading-rule, transparent);
-  padding-bottom: 0.15em;
+
+/* h1：最重字重 + 紧字距；底线上有一段主题色强调，hover 时沿整条底线铺开 */
+.chat-md h1 {
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  padding-bottom: 0.32em;
+  border-bottom: 1px solid var(--chat-heading-rule, color-mix(in oklab, var(--md-accent) 22%, transparent));
+  background: linear-gradient(90deg, var(--md-accent), transparent) no-repeat left bottom / 22% 2px;
 }
-.chat-md h2:hover,
-.chat-md h3:hover {
+.chat-md h1:hover {
+  background-size: 100% 2px;
+  border-bottom-color: var(--chat-heading-rule-hover, color-mix(in oklab, var(--md-accent) 40%, transparent));
+}
+
+/* h2：左侧粗竖条 + 向右渐隐的淡底；hover 竖条加粗（inset 阴影） */
+.chat-md h2 {
+  font-weight: 700;
+  padding: 0.12em 0 0.2em 0.7em;
+  border-left: 4px solid color-mix(in oklab, var(--md-accent) 62%, transparent);
+  border-bottom: 1px solid var(--chat-heading-rule, transparent);
+  border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--md-accent) 7%, transparent), transparent 72%);
+  box-shadow: inset 0 0 0 0 var(--md-accent);
+}
+.chat-md h2:hover {
+  border-left-color: var(--md-accent);
   border-bottom-color: var(--chat-heading-rule-hover, var(--chat-heading-rule, transparent));
+  box-shadow: inset 3px 0 0 0 var(--md-accent);
+}
+
+/* h3：较细的左竖条，无底纹 */
+.chat-md h3 {
+  font-weight: 650;
+  padding: 0.1em 0 0.15em 0.6em;
+  border-left: 3px solid color-mix(in oklab, var(--md-accent) 42%, transparent);
+  border-bottom: 1px solid var(--chat-heading-rule, transparent);
+}
+.chat-md h3:hover {
+  border-left-color: var(--md-accent);
+  border-bottom-color: var(--chat-heading-rule-hover, var(--chat-heading-rule, transparent));
+}
+
+/* h4：前置 ▸ 记号，hover 记号前移 */
+.chat-md h4 {
+  font-weight: 650;
+}
+.chat-md h4::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.4em;
+  color: color-mix(in oklab, var(--md-accent) 70%, transparent);
+  transition:
+    color var(--md-t) var(--md-ease),
+    transform var(--md-t) var(--md-ease);
+}
+.chat-md h4:hover::before {
+  color: var(--md-accent);
+}
+[data-motion="full"] .chat-md h4:hover::before {
+  transform: translateX(3px);
+}
+
+/* h5：小号加字距，主题色略染 */
+.chat-md h5 {
+  font-size: 0.95em;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  color: var(--chat-heading, color-mix(in oklab, var(--md-accent) 40%, var(--foreground)));
+}
+.chat-md h5::before {
+  content: "◆";
+  margin-right: 0.45em;
+  font-size: 0.55em;
+  vertical-align: 0.2em;
+  color: color-mix(in oklab, var(--md-accent) 60%, transparent);
+  transition: color var(--md-t) var(--md-ease);
+}
+.chat-md h5:hover::before {
+  color: var(--md-accent);
+}
+
+/* h6：弱化——常规字重、淡色、前置圆点 */
+.chat-md h6 {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--chat-heading, var(--muted-foreground));
+}
+.chat-md h6::before {
+  content: "·";
+  margin-right: 0.45em;
+  color: color-mix(in oklab, var(--md-accent) 55%, transparent);
+}
+
+/* 表格：悬停单元格底色标亮 + 文字变色；所在行淡淡提示。表头同款。全部缓变 */
+.chat-md th,
+.chat-md td {
+  transition:
+    background-color var(--md-t) var(--md-ease),
+    color var(--md-t) var(--md-ease);
+}
+.chat-md tbody tr:hover > td {
+  background-color: color-mix(in oklab, var(--md-accent) 5%, transparent);
+}
+.chat-md tbody tr:hover > td:hover,
+.chat-md thead th:hover {
+  background-color: var(--chat-cell-hover-bg, color-mix(in oklab, var(--md-accent) 16%, transparent));
+  color: var(--chat-cell-hover, color-mix(in oklab, var(--md-accent) 85%, var(--foreground)));
 }
 
 /* 参考文献条目（P2 条目卡片）：含 #ref-N 锚点的条目可点击，悬停给背景提示 */
