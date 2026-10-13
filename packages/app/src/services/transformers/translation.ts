@@ -29,7 +29,7 @@ export const translationTransformer: Transformer = {
     const parsed = parseSectionDocument(ctx.content);
     const blocks = enumerateSectionBlocks(parsed);
     if (blocks.length === 0) return ctx.content;
-    const injected = injectSectionTranslations(parsed, blocks, file.blocks);
+    const injected = await injectSectionTranslations(parsed, blocks, file.blocks);
     if (injected === 0) return ctx.content;
     return serializeSectionDocument(parsed);
   },

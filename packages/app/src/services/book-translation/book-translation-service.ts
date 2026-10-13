@@ -168,11 +168,14 @@ export async function openBookDocument(bookId: string): Promise<{ book: SimpleBo
 }
 
 /**
- * 遍历书各章枚举段文本（spineIndex → 段文本序列）。
+ * 遍历书各章枚举段文本（spineIndex → 段文本序列 + 独占公式块标记）。
  * translateBook 与 alignBookTranslation 共用的定位契约入口——段序号只在此产生。
+ * mathOnly（section-blocks 裁定）：独占公式块不进模型，翻译服务落空译文占位。
  */
-export async function collectBookSections(bookDoc: BookDoc): Promise<{ spineIndex: number; sourceTexts: string[] }[]> {
-  const out: { spineIndex: number; sourceTexts: string[] }[] = [];
+export async function collectBookSections(
+  bookDoc: BookDoc,
+): Promise<{ spineIndex: number; sourceTexts: string[]; mathOnly: boolean[] }[]> {
+  const out: { spineIndex: number; sourceTexts: string[]; mathOnly: boolean[] }[] = [];
   for (const [index, section] of (bookDoc.sections ?? []).entries()) {
     if (section.linear === "no") continue; // 与渲染端一致：非线性章不处理
     let doc: Document | undefined;
@@ -183,8 +186,10 @@ export async function collectBookSections(bookDoc: BookDoc): Promise<{ spineInde
       continue;
     }
     if (!doc) continue;
-    const sourceTexts = enumerateSectionBlocks(wrapSectionDocument(doc)).map((block) => block.sourceText);
-    if (sourceTexts.length > 0) out.push({ spineIndex: index, sourceTexts });
+    const blocks = enumerateSectionBlocks(wrapSectionDocument(doc));
+    const sourceTexts = blocks.map((block) => block.sourceText);
+    const mathOnly = blocks.map((block) => block.mathOnly);
+    if (sourceTexts.length > 0) out.push({ spineIndex: index, sourceTexts, mathOnly });
   }
   return out;
 }
@@ -251,10 +256,11 @@ function buildBatchPrompt(
 
 要求：
 1. 术语、人名在全篇保持一致译法；人名不译。
-2. 数字、数学表达式、代码片段、URL 原样保留，不得翻译或改动。
-3. 译文使用流畅自然的书面简体中文，不添加注释、译名标注或原文。
-4. 输入是 JSON 数组 [{"index":N,"text":"..."}]，只输出 JSON 数组 [{"index":N,"text":"译文"}]：index 与输入一一对应、不得遗漏或新增，不要输出任何其他文字或解释。
-5. 即使相邻条目在语义上是同一段落的延续（原书跨页断开），也必须逐条独立翻译、按原 index 逐条输出——不得合并条目、不得重新分段、不得调整条目数。${glossaryNote}${strictNote}
+2. 数字、代码片段、URL 原样保留，不得翻译或改动。
+3. 数学公式在输入中以标准定界符给出：行内 $...$、行间 $$...$$（独占公式块不会出现在输入中）。公式（含定界符、反斜杠、上下标、花括号）必须逐字原样保留：不得翻译、改写、拆散或转为 Unicode 符号；输出 JSON 时公式内反斜杠按 JSON 规范转义为 \\\\。
+4. 译文使用流畅自然的书面简体中文，不添加注释、译名标注或原文。
+5. 输入是 JSON 数组 [{"index":N,"text":"..."}]，只输出 JSON 数组 [{"index":N,"text":"译文"}]：index 与输入一一对应、不得遗漏或新增，不要输出任何其他文字或解释。
+6. 即使相邻条目在语义上是同一段落的延续（原书跨页断开），也必须逐条独立翻译、按原 index 逐条输出——不得合并条目、不得重新分段、不得调整条目数。${glossaryNote}${strictNote}
 
 待翻译内容：
 ${JSON.stringify(batch)}`;
@@ -384,8 +390,10 @@ interface ChapterWork {
   sourceHash: string;
   hashes: Map<number, string>;
   working: Record<string, BookTranslationBlock>;
-  /** 待翻段（章内分批，批内块 index 连续属于同一章） */
+  /** 待翻段（章内分批，批内块 index 连续属于同一章）；独占公式块不进批 */
   batches: { index: number; text: string }[][];
+  /** 本轮写过公式块空译文占位（无待翻批的章也须立即落盘一次） */
+  autoDirty: boolean;
   /** 每批落盘时构造的章文件骨架（blocks 引用 working，落盘即最新） */
   save: () => Promise<void>;
 }
@@ -440,20 +448,32 @@ export async function translateBook(options: {
 
   // 逐章组织待翻：hash 幂等对比既有章文件
   const chapters: ChapterWork[] = [];
-  for (const { spineIndex, sourceTexts } of sectionTexts) {
+  let autoMathOnly = 0;
+  for (const { spineIndex, sourceTexts, mathOnly } of sectionTexts) {
     const hashes = new Map<number, string>();
     for (const [i, text] of sourceTexts.entries()) hashes.set(i, await hashBlockText(text));
     const existing = force ? null : await loadBookTranslationSection(bookId, spineIndex);
     const working: Record<string, BookTranslationBlock> = { ...(existing?.blocks ?? {}) };
+    // 独占公式块：不进模型，直接落空译文占位（段序号契约不变；注入侧空文本 = 不挂译文块）。
+    // 旧译本里这些段是公式乱码译文——hash 不匹配自然被占位覆盖，续翻即自愈。
+    let autoDirty = false;
+    for (let i = 0; i < sourceTexts.length; i += 1) {
+      const key = String(i);
+      if (!mathOnly[i] || working[key]?.hash === hashes.get(i)) continue;
+      working[key] = { hash: hashes.get(i) as string, text: "" };
+      autoDirty = true;
+      autoMathOnly += 1;
+    }
     const pending = sourceTexts
       .map((text, i) => ({ index: i, text }))
-      .filter((block) => working[String(block.index)]?.hash !== hashes.get(block.index));
+      .filter((block) => !mathOnly[block.index] && working[String(block.index)]?.hash !== hashes.get(block.index));
     chapters.push({
       spineIndex,
       sourceHash: await hashBlockText(sourceTexts.join("\n")),
       hashes,
       working,
       batches: makeBatches(pending),
+      autoDirty,
       save: async () => {
         /* 占位，glossary 确定后统一补齐 */
       },
@@ -466,7 +486,8 @@ export async function translateBook(options: {
     0,
   );
   let done = initialReady;
-  const skipped = initialReady;
+  // 公式块占位算"本轮新处理"而非"跳过已翻"（结算文案口径）
+  const skipped = initialReady - autoMathOnly;
   let failedBatches = 0;
   onProgress?.({ done, total });
 
@@ -496,6 +517,11 @@ export async function translateBook(options: {
       };
       await saveBookTranslationSection(bookId, ch.spineIndex, file);
     };
+  }
+
+  // 公式块空译文占位立即落盘：无待翻批的章在批循环里永远不会触发 save，占位会丢
+  for (const ch of chapters) {
+    if (ch.autoDirty) await ch.save();
   }
 
   const result = (cancelled: boolean): BookTranslateResult => ({

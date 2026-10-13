@@ -10,8 +10,13 @@
  * （可能改写标点/加 class），因此**注入侧按段序号取译文、不校验 hash**；hash 仅用于
  * 翻译服务的幂等续翻（对原文计）与对齐缓存键。EPUB 原文件入库后不变，段序号稳定。
  *
- * 一期边界：EPUB 弹出脚注（aside[epub:type=footnote 族）不翻译；译文为纯文本
- * （textContent 提取，原文内联格式不保留）——二期词句对齐交互层同此坐标系。
+ * 一期边界：EPUB 弹出脚注（aside[epub:type=footnote 族）不翻译。
+ *
+ * 公式通道（2026-10-10 裁定，docs/plans/book-translation-plan.md）：math 元素在枚举时序列化为
+ * 标准定界符文本（$..$ 行内 / $$..$$ 行间，TeX 取 x-tex annotation）——此前 textContent 把
+ * "MathML Unicode 字形 + annotation LaTeX 源码" 拼接喂给模型，译文产出乱码且渲染端纯文本注入
+ * 无任何渲染通路。独占公式块（mathOnly）不进模型；注入侧把译文内定界符公式经 KaTeX 渲染回
+ * MathML（iframe WebView2 原生 MathML Core，免 CSS）。译文其余部分仍为纯文本节点（免 XSS）。
  */
 
 /** 块级候选选择器（与 use-annotator 块级容器、论文侧 TRANSLATION_SELECTOR 口径对齐） */
@@ -25,8 +30,10 @@ const XHTML_NS = "http://www.w3.org/1999/xhtml";
 export interface SectionBlock {
   /** 章内段序号（0 起，仅对 translatable 的块连续编号——与译本 JSON 的 blocks 键一致） */
   index: number;
-  /** 规范化空白后的段源文本（翻译输入 + hash 基准） */
+  /** 规范化空白后的段源文本（翻译输入 + hash 基准；公式已序列化为 $..$/$$..$$ 定界符） */
   sourceText: string;
+  /** 独占公式块（去公式后无可译残留）：翻译服务不进模型，落空译文占位保段序号契约 */
+  mathOnly: boolean;
   el: Element;
 }
 
@@ -76,13 +83,42 @@ function isInFootnoteAside(el: Element): boolean {
   return false;
 }
 
-/** 段源文本：排除已注入译文块的文本（td 场景译文是子元素，textContent 会混入；
- *  无译文块时零开销直读） */
-function blockTextWithoutTranslations(el: Element): string {
-  if (!el.querySelector(`[${TRANSLATION_ATTR}]`)) return el.textContent ?? "";
-  const clone = el.cloneNode(true) as Element;
-  for (const node of Array.from(clone.querySelectorAll(`[${TRANSLATION_ATTR}]`))) node.remove();
-  return clone.textContent ?? "";
+/** 元素本地名（XML 文档带命名空间前缀时 localName 已剥前缀；HTML 兜底文档 tagName 小写化） */
+function localNameOf(el: Element): string {
+  return (el.localName ?? el.tagName).toLowerCase();
+}
+
+const MATH_LOCAL_NAME = "math";
+
+/**
+ * math 元素的 TeX 源码：annotation(application/x-tex 族) 优先 → alttext 兜底；
+ * 两者皆无返回 null（调用方回退子节点遍历 = 旧 textContent 字形口径，不劣化）。
+ * display 判定走 MathML display="block"（KaTeX mathml 输出同属性，两侧口径一致）。
+ */
+function mathTexOf(el: Element): { tex: string; display: boolean } | null {
+  const ann = Array.from(el.querySelectorAll("annotation")).find((a) =>
+    (a.getAttribute("encoding") ?? "").toLowerCase().includes("tex"),
+  );
+  const tex = (ann?.textContent ?? el.getAttribute("alttext") ?? "").trim();
+  if (!tex) return null;
+  return { tex, display: el.getAttribute("display") === "block" };
+}
+
+/** math 元素 → `$tex$` / `$$tex$$`；无 TeX 源码返回 null（回退子节点遍历） */
+function serializeMathElement(el: Element): string | null {
+  const t = mathTexOf(el);
+  if (!t) return null;
+  return t.display ? `$$${t.tex}$$` : `$${t.tex}$`;
+}
+
+/**
+ * 文本节点残留裸 LaTeX 定界符 → 标准定界符（与 rawmath 同口径 \(..\)/\[..\]）。
+ * 渲染端由 rawmath 负责 KaTeX 化；此处只统一翻译输入与 hash 基准形态。
+ */
+function convertRawMathDelimiters(text: string): string {
+  return text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `$$${body.trim()}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_m, body: string) => `$${body.trim()}$`);
 }
 
 const HAS_CONTENT_RE = /[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
@@ -90,6 +126,47 @@ const HAS_CONTENT_RE = /[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-
 /** 可翻译判定：规范化后有实际内容（≥2 字符且含字母/数字/CJK，排除纯标点/页码装饰） */
 function isTranslatableText(text: string): boolean {
   return text.length >= 2 && HAS_CONTENT_RE.test(text);
+}
+
+/**
+ * 段源文本：math 元素序列化为 $..$/$$..$$（无 TeX 源码的 math 回退字形文本），
+ * 译文子树排除（td 场景译文是子元素），裸 LaTeX 定界符统一。
+ */
+function blockSourceText(el: Element): string {
+  let out = "";
+  const walk = (node: Node) => {
+    if (node.nodeType === 3) {
+      out += node.nodeValue ?? "";
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const elem = node as Element;
+    if (elem.hasAttribute(TRANSLATION_ATTR)) return; // 已注入译文子树不混入源文本
+    if (localNameOf(elem) === MATH_LOCAL_NAME) {
+      const ser = serializeMathElement(elem);
+      if (ser !== null) {
+        out += ser;
+        return;
+      }
+    }
+    for (const child of Array.from(node.childNodes)) walk(child);
+  };
+  walk(el);
+  return convertRawMathDelimiters(out);
+}
+
+/**
+ * 独占公式块判定：含公式定界符，且剥掉全部公式后无可译残留。
+ * 公式编号残留（如 (1.10)）含数字 → 算可译 → 整块仍进模型（$$..$$ 逐字保留 + 编号照译）。
+ */
+export function isMathOnlySource(sourceText: string): boolean {
+  if (!sourceText.includes("$")) return false;
+  const stripped = sourceText
+    .replace(/\$\$[\s\S]*?\$\$/g, " ")
+    .replace(/\$[^$\n]*?\$/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return !isTranslatableText(stripped);
 }
 
 /**
@@ -103,9 +180,9 @@ export function enumerateSectionBlocks(parsed: ParsedSection): SectionBlock[] {
     if (el.closest(`[${TRANSLATION_ATTR}]`)) continue; // 已注入的译文块（重入幂等）
     if (el.querySelector(BLOCK_SELECTOR)) continue; // 外层容器块：只取叶子块，避免重复翻译同段文字
     if (isInFootnoteAside(el)) continue; // EPUB 弹出脚注一期不翻译
-    const sourceText = normalizeBlockText(blockTextWithoutTranslations(el));
+    const sourceText = normalizeBlockText(blockSourceText(el));
     if (!isTranslatableText(sourceText)) continue;
-    blocks.push({ index: blocks.length, sourceText, el });
+    blocks.push({ index: blocks.length, sourceText, mathOnly: isMathOnlySource(sourceText), el });
   }
   return blocks;
 }
@@ -127,20 +204,35 @@ export interface BlockTextMap {
   nodes: { node: Text; start: number }[];
 }
 
-/** 收集元素下的文本节点（文档序，排除 [data-book-translation] 子树——td 场景译文是子元素；
+/** 文本贡献：真实文本节点（Range 可定位）或 math 序列化合成文本（node=null，仅参与坐标拼接） */
+interface TextContribution {
+  node: Text | null;
+  text: string;
+}
+
+/** 收集元素下的文本贡献（文档序，排除 [data-book-translation] 子树——td 场景译文是子元素；
  *  手写递归而非 TreeWalker：文本节点须属于所在 iframe 文档的 Node 常量域，跨 doc 安全）。
  *  排除只针对后代子树，不排除根元素自身——译文块（自身带 data-book-translation）作为 hover
- *  目标传入时也要能建映射（08-29 hover 对译文侧恒 null 的根因，2026-08-30 CDP 实证） */
-function collectTextNodes(el: Element): Text[] {
-  const out: Text[] = [];
+ *  目标传入时也要能建映射（08-29 hover 对译文侧恒 null 的根因，2026-08-30 CDP 实证）。
+ *  math 元素贡献与 sourceText 同口径的定界符序列化文本（而非 MathML 字形 textContent）——
+ *  否则公式段的 hover/对齐坐标在存储文本与 DOM 两侧漂移（2026-10-10 公式通道裁定）。 */
+function collectTextNodes(el: Element): TextContribution[] {
+  const out: TextContribution[] = [];
   const isText = (node: Node) => node.nodeType === 3; // TEXT_NODE
   const isElement = (node: Node) => node.nodeType === 1; // ELEMENT_NODE
   const walk = (node: Node) => {
     if (isText(node)) {
-      out.push(node as Text);
+      out.push({ node: node as Text, text: (node as Text).data });
       return;
     }
     if (isElement(node) && node !== el && (node as Element).hasAttribute(TRANSLATION_ATTR)) return; // 译文子树不参与
+    if (isElement(node) && localNameOf(node as Element) === MATH_LOCAL_NAME) {
+      const ser = serializeMathElement(node as Element);
+      if (ser !== null) {
+        out.push({ node: null, text: ser });
+        return;
+      }
+    }
     for (const child of Array.from(node.childNodes)) walk(child);
   };
   walk(el);
@@ -160,9 +252,9 @@ export function buildBlockTextMap(el: Element): BlockTextMap {
   const normToRaw: number[] = [];
   const rawToNorm: number[] = [];
 
-  for (const node of collectTextNodes(el)) {
-    nodes.push({ node, start: raw.length });
-    for (const ch of node.data) {
+  for (const contribution of collectTextNodes(el)) {
+    if (contribution.node) nodes.push({ node: contribution.node, start: raw.length });
+    for (const ch of contribution.text) {
       const rawIdx = raw.length;
       raw += ch;
       if (/\s/.test(ch)) {
@@ -265,21 +357,85 @@ function findExistingTranslation(el: Element, index: number): Element | null {
   return null;
 }
 
+// ─── 译文公式渲染（2026-10-10 公式通道裁定） ───
+
+// 懒加载：katex 本体只在译文真含公式定界符时才付出成本（同 rawmath 口径）
+let katexPromise: Promise<typeof import("katex")> | null = null;
+function loadKatex() {
+  if (!katexPromise) katexPromise = import("katex");
+  return katexPromise;
+}
+
+/** 译文公式 token：$$行间$$ 优先；行内 $..$ 沿用 pandoc 规则——开 $ 后非空白、闭 $ 前非空白且后不接数字。
+ *  "costs $5 and $10" 这类价格散文闭 $ 前是空白，天然不成 token；"$x = 5$" 这类带空格公式正常命中。
+ *  split 带捕获组：奇数下标即 token，偶数下标是纯文本 */
+const TRANSLATION_MATH_RE = /(\$\$[\s\S]+?\$\$|\$[^\s$](?:[^$\n]*?[^\s$])?\$(?!\d))/g;
+
+/** KaTeX mathml 输出 → 目标文档的 math 元素（剥 span.katex 外壳只留 <math>；
+ *  XML 解析优先（KaTeX 输出实测 XML 安全），parsererror 回退 HTML 解析；失败返回 null） */
+function parseMathElement(html: string, doc: Document): Element | null {
+  const xml = new DOMParser().parseFromString(
+    `<div xmlns="http://www.w3.org/1999/xhtml">${html}</div>`,
+    "application/xhtml+xml",
+  );
+  let container: Element | null = xml.querySelector("parsererror") ? null : xml.documentElement;
+  if (!container) container = new DOMParser().parseFromString(html, "text/html").body;
+  const math = container.querySelector(MATH_LOCAL_NAME);
+  if (!math) return null;
+  return doc.importNode(math, true) as Element;
+}
+
+/**
+ * 译文填充：纯文本段走文本节点（免 XSS）；$..$/$$..$$ 经 KaTeX 渲染为 MathML 挂进译文块
+ * （iframe WebView2 原生 MathML Core，与原书 MathML 同渲染通路，免注入 CSS）。
+ * 渲染失败/不可信 token 回退原样文本节点——译文可读性优先于公式美观。
+ */
+async function fillTranslationContent(doc: Document, el: Element, text: string): Promise<void> {
+  while (el.firstChild) el.removeChild(el.firstChild);
+  if (!text.includes("$")) {
+    el.appendChild(doc.createTextNode(text));
+    return;
+  }
+  const parts = text.split(TRANSLATION_MATH_RE);
+  const katex = parts.length > 1 ? (await loadKatex()).default : null;
+  for (const [i, part] of parts.entries()) {
+    if (!part) continue;
+    let mathEl: Element | null = null;
+    if (katex && i % 2 === 1) {
+      const display = part.startsWith("$$");
+      const body = (display ? part.slice(2, -2) : part.slice(1, -1)).trim();
+      try {
+        const html = katex.renderToString(body, {
+          output: "mathml",
+          displayMode: display,
+          throwOnError: false,
+          strict: "ignore",
+        });
+        mathEl = parseMathElement(html, doc);
+      } catch {
+        mathEl = null;
+      }
+    }
+    el.appendChild(mathEl ?? doc.createTextNode(part));
+  }
+}
+
 /**
  * 向章节文档注入译文块：每个有译文的段落挂一个
- * `<div class="translation-target translation-target-block" data-book-translation>`（纯文本填充，
- * 天然免 XSS）。td/th 内部 append（表格行间插 div 非法），其余 after。
- * 替换/更新语义：同段已有译文块时更新其文本（重入不重复）；无译文的段若有旧块则移除。
+ * `<div class="translation-target translation-target-block" data-book-translation>`（文本节点 +
+ * KaTeX MathML 公式节点填充）。td/th 内部 append（表格行间插 div 非法），其余 after。
+ * 替换/更新语义：同段已有译文块时重填内容（重入不重复）；无译文的段若有旧块则移除
+ * （mathOnly 块译文为空文本 → 走此移除/不挂路径，段序号契约不受影响）。
  * 原文段同步标注 `translation-source` 类 + `data-block-index`（译文模式隐藏原文的钩子，
  * 由 getTranslationStyles 按 bookViewMode 编译；td/th 不加——整格隐藏会连译文一起藏，
  * 表格段在译文模式下原文照常显示，属已知取舍；data-block-index 供交互层定位）。
  * 显示与否由 CSS 控制——开关切换即时生效，无需重载章节。
  */
-export function injectSectionTranslations(
+export async function injectSectionTranslations(
   parsed: ParsedSection,
   blocks: SectionBlock[],
   translations: Record<string, { text: string }>,
-): number {
+): Promise<number> {
   const doc = parsed.doc;
   const isCell = (el: Element) => {
     const tag = el.tagName.toLowerCase();
@@ -290,7 +446,7 @@ export function injectSectionTranslations(
     const entry = translations[String(block.index)];
     const existing = findExistingTranslation(block.el, block.index);
     if (!entry?.text) {
-      existing?.remove(); // 译文被清空（force 重翻中途态）：旧块移除
+      existing?.remove(); // 译文被清空（force 重翻中途态 / mathOnly 空占位）：旧块移除
       block.el.classList.remove("translation-source");
       block.el.removeAttribute("data-block-index");
       continue;
@@ -301,7 +457,7 @@ export function injectSectionTranslations(
       block.el.classList.add("translation-source"); // 译文模式隐藏原文的钩子（display:none 由 CSS 编译）
     }
     if (existing) {
-      existing.textContent = entry.text; // 更新语义：重入不重复
+      await fillTranslationContent(doc, existing, entry.text); // 更新语义：重入不重复
       injected += 1;
       continue;
     }
@@ -309,7 +465,7 @@ export function injectSectionTranslations(
     div.setAttribute("class", "translation-target translation-target-block");
     div.setAttribute(TRANSLATION_ATTR, "");
     div.setAttribute("data-block-index", String(block.index));
-    div.textContent = entry.text;
+    await fillTranslationContent(doc, div, entry.text);
     if (isCell(block.el)) block.el.appendChild(div);
     else block.el.after(div);
     injected += 1;

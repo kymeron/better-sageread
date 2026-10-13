@@ -399,3 +399,42 @@ effect（`mapSrcRangeToTgt`/`mapTgtRangeToSrc`，词级优先句级吸附回退�
 | 任务通道 + 按章任务先例 | `task-executors/paper-translate.ts`（通道模式）；`book-vectorize.ts`（按章进度回写 book_status） |
 | 用量记账 | `ai-usage-service.ts` recordAuxUsage，kind="translate" 论文侧已接，书籍同款 |
 | 章节枚举 | 前端 `bookDoc.sections`；Rust 侧向量化管线（仅作参考，定位键不用它） |
+
+---
+
+## 公式通道缺陷与裁定（2026-10-10 记账，同日修复）
+
+**现象**（用户实测，热力学教科书双语视图）：译文块公式全为乱码，形如
+`U—iδmi\underline{U}_{i}\delta m_{i}`——"MathML Unicode 字形 + annotation LaTeX 源码"的拼接；
+独占公式块（如 (1.10)）整条公式被"翻译"成乱码块；译文对公式无任何渲染通路。
+
+**根因**（两处）：
+
+1. 源侧：`enumerateSectionBlocks` 取段源文本走 `textContent`，而带 x-tex annotation 的
+   `<math>` 元素 textContent = 字形文本 + annotation LaTeX 源码拼接——喂给模型的既不是
+   标准 LaTeX 也不是可读文本；
+2. 渲染侧：`injectSectionTranslations` 以 `div.textContent` 纯文本填充译文块——译文即使
+   含合法 LaTeX 也渲染不出来（一期"译文为纯文本"边界的直接后果）。
+
+**裁定**（三层闭环，实现于 `section-blocks.ts` + `book-translation-service.ts`）：
+
+- **源标准化**：枚举时 math 序列化为标准定界符——行内 `$tex$` / 行间 `$$tex$$`（TeX 优先取
+  `annotation[encoding*=tex]`，alttext 兜底，两者皆无回退字形 textContent 不劣化）；文本节点
+  残留裸 LaTeX `\(...\)`/`\[...\]` 统一同定界符（与 rawmath 同口径）；
+- **模型约束**：独占公式块（mathOnly：剥公式后无可译残留）不进模型——翻译服务落空译文占位
+  （段序号契约不变；注入侧空文本 = 不挂译文块；旧乱码译文按 hash 不匹配在续翻时自愈覆盖）。
+  行内公式随块进翻译，提示词约束 `$...$`/`$$...$$` 逐字保留（含反斜杠，JSON 中转义为 `\`）；
+- **渲染通路**：译文内 `$..$`/`$$..$$` 经 KaTeX（`output:'mathml'`，剥 span.katex 外壳）渲染回
+  MathML 挂进译文块——与原书 MathML 同走 iframe WebView2 原生 MathML Core，免注入 CSS；
+  纯文本段仍为文本节点（免 XSS）；不可信 token（`$5 and $` 类散文误包）与渲染失败回退原样文本。
+
+**坐标一致性**：`collectTextNodes` 对 math 元素贡献"序列化定界符文本"（而非字形 textContent）——
+否则源段/译文段两侧 BlockTextMap 的 norm 与存储文本漂移，公式段 hover/对齐坐标失效。
+
+**已知取舍**：公式编号残留（如 `(1.10)` 独立文本节点）算可译残留——整块仍进模型
+（`$$..$$` 逐字保留 + 编号照译）；模型仍可能违约改动公式（提示词约束 + JSON 反斜杠修复层
+兜底，不做结构杜绝）；无 x-tex annotation 且无 alttext 的 math 维持旧字形口径（不劣化不改善）。
+
+**验证**（2026-10-10）：jsdom 实测探针（测毕即删，不入仓）——枚举序列化 / mathOnly 判定 /
+注入渲染（含价格误包防御）/ XML 序列化安全 / BlockTextMap norm === 存储文本，21 项全过；
+`npx tsc -b` 通过；biome 对改动文件无告警。

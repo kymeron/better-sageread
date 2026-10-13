@@ -50,9 +50,9 @@ try {
 
   let passed = 0;
   const failures = [];
-  function check(name, fn) {
+  async function check(name, fn) {
     try {
-      fn();
+      await fn();
       passed++;
       console.log(`ok - ${name}`);
     } catch (error) {
@@ -85,9 +85,9 @@ try {
 
   // 1) 枚举规则
   const first = parseSectionDocument(XHTML);
-  check("XML 解析成功（isXml=true）", () => assert(first.isXml, "应走 XML 分支"));
+  await check("XML 解析成功（isXml=true）", () => assert(first.isXml, "应走 XML 分支"));
   const blocks1 = enumerateSectionBlocks(first);
-  check("枚举契约：叶子块/排除嵌套外层/排除脚注/排除纯标点", () => {
+  await check("枚举契约：叶子块/排除嵌套外层/排除脚注/排除纯标点", () => {
     const texts = blocks1.map((b) => b.el.getAttribute("id") ?? b.el.tagName.toLowerCase());
     assert(
       JSON.stringify(texts) ===
@@ -102,10 +102,10 @@ try {
   });
 
   // 2) 注入幂等：注入 → 序列化 → 重解析 → 重枚举，序号与文本不变
-  check("注入 → 序列化往返 → 枚举幂等（译文块不入枚举、段序不漂移）", () => {
+  await check("注入 → 序列化往返 → 枚举幂等（译文块不入枚举、段序不漂移）", async () => {
     const translations = {};
     for (const block of blocks1) translations[String(block.index)] = { hash: "x", text: `译文${block.index}` };
-    const injectedCount = injectSectionTranslations(first, blocks1, translations);
+    const injectedCount = await injectSectionTranslations(first, blocks1, translations);
     assert(injectedCount === blocks1.length, `注入数应=段数，实际 ${injectedCount}`);
     const roundTrip = parseSectionDocument(serializeSectionDocument(first));
     assert(roundTrip.isXml, "往返后仍应 XML 解析成功");
@@ -124,16 +124,16 @@ try {
   });
 
   // 序列化健康：XHTML 命名空间下不应产生 xmlns="" 污染
-  check("序列化无 xmlns 空命名空间污染", () => {
+  await check("序列化无 xmlns 空命名空间污染", async () => {
     const again = parseSectionDocument(XHTML);
-    injectSectionTranslations(again, enumerateSectionBlocks(again), { "0": { hash: "x", text: "第一章" } });
+    await injectSectionTranslations(again, enumerateSectionBlocks(again), { "0": { hash: "x", text: "第一章" } });
     const out = serializeSectionDocument(again);
     assert(!out.includes('xmlns=""'), "出现 xmlns=\"\" 污染");
     assert(out.includes("data-book-translation"), "译文标记属性丢失");
   });
 
   // 3) 双入口一致：字符串入口 vs Document 入口（foliate createDocument 语义）
-  check("双入口枚举一致（transformer 字符串 vs 服务 Document）", () => {
+  await check("双入口枚举一致（transformer 字符串 vs 服务 Document）", () => {
     const docEntry = new DOMParser().parseFromString(XHTML, "application/xhtml+xml");
     const viaDoc = enumerateSectionBlocks(wrapSectionDocument(docEntry)).map((b) => b.sourceText);
     const viaStr = blocks1.map((b) => b.sourceText);
@@ -141,7 +141,7 @@ try {
   });
 
   // 4) 烂 XHTML 兜底（HTML 语法）
-  check("烂 XHTML 走 text/html 兜底且枚举照常", () => {
+  await check("烂 XHTML 走 text/html 兜底且枚举照常", () => {
     const broken = `<html><body><p>Unclosed paragraph text<br>with html syntax<p>Second paragraph
     <div><span>inline</span> inside bare div</div></body></html>`;
     const parsed = parseSectionDocument(broken);
@@ -152,29 +152,29 @@ try {
   });
 
   // td 注入位置：表格单元格内 append（而非 tr 间插 div）
-  check("td 注入为内部 append（表格结构合法）", () => {
+  await check("td 注入为内部 append（表格结构合法）", async () => {
     const table = parseSectionDocument(
       `<html xmlns="http://www.w3.org/1999/xhtml"><body><table><tbody><tr><td id="f">Cell text here.</td></tr></tbody></table></body></html>`,
     );
     const blocks = enumerateSectionBlocks(table);
     assert(blocks.length === 1 && blocks[0].el.tagName.toLowerCase() === "td", "表格枚举应得 td");
-    injectSectionTranslations(table, blocks, { "0": { hash: "x", text: "单元格" } });
+    await injectSectionTranslations(table, blocks, { "0": { hash: "x", text: "单元格" } });
     const injected = table.doc.querySelector(`[${TRANSLATION_ATTR}]`);
     assert(injected && injected.parentElement === blocks[0].el, "译文 div 应在 td 内部");
   });
 
   // 重入回归：同一活文档二次注入（续翻后 book-translation-updated 再触发场景）——
   // 译文块更新不重复、td 段文本不混入译文（transformer 注入版章节上 DOM 直注入的活场景）
-  check("二次注入不重复、td 文本不漂移", () => {
+  await check("二次注入不重复、td 文本不漂移", async () => {
     const parsed = parseSectionDocument(XHTML);
     const blocks1 = enumerateSectionBlocks(parsed);
     const translations = {};
     for (const block of blocks1) translations[String(block.index)] = { hash: "x", text: `译文${block.index}` };
-    injectSectionTranslations(parsed, blocks1, translations);
+    await injectSectionTranslations(parsed, blocks1, translations);
     // 模拟译文更新后再次注入（枚举的是已注入的活文档）
     const blocks2 = enumerateSectionBlocks(parsed);
     const updated = { ...translations, "6": { hash: "x", text: "更新后的单元格译文" } };
-    const count2 = injectSectionTranslations(parsed, blocks2, updated);
+    const count2 = await injectSectionTranslations(parsed, blocks2, updated);
     const divs = parsed.doc.querySelectorAll(`[${TRANSLATION_ATTR}]`);
     assert(divs.length === blocks1.length, `二次注入后译文块重复: ${divs.length}`);
     assert(count2 === blocks1.length, `二次注入计数异常: ${count2}`);
@@ -188,7 +188,7 @@ try {
   });
 
   // ─── 批次 4a：段内偏移映射（DOM ↔ 规范化文本，交互层地基） ───
-  check("偏移映射：norm 与枚举 sourceText 严格一致（含嵌套 span/多空白/换行）", () => {
+  await check("偏移映射：norm 与枚举 sourceText 严格一致（含嵌套 span/多空白/换行）", () => {
     const parsed = parseSectionDocument(XHTML);
     const blocks = enumerateSectionBlocks(parsed);
     for (const block of blocks) {
@@ -197,7 +197,7 @@ try {
     }
   });
 
-  check("偏移映射：norm→raw→norm 双向往返一致", () => {
+  await check("偏移映射：norm→raw→norm 双向往返一致", () => {
     const parsed = parseSectionDocument(XHTML);
     for (const block of enumerateSectionBlocks(parsed)) {
       const map = buildBlockTextMap(block.el);
@@ -208,7 +208,7 @@ try {
     }
   });
 
-  check("偏移映射：normToRange 取回的文本规范化后 === norm 切片（跨文本节点）", () => {
+  await check("偏移映射：normToRange 取回的文本规范化后 === norm 切片（跨文本节点）", () => {
     // 构造含内联 span 的多节点段落
     const parsed = parseSectionDocument(
       `<html xmlns="http://www.w3.org/1999/xhtml"><body><p id="multi">Alpha <span>beta  gamma</span>   delta.</p></body></html>`,
@@ -226,7 +226,7 @@ try {
     }
   });
 
-  check("偏移映射：caret 模拟（node+offset → raw → norm 字符正确）", () => {
+  await check("偏移映射：caret 模拟（node+offset → raw → norm 字符正确）", () => {
     const parsed = parseSectionDocument(
       `<html xmlns="http://www.w3.org/1999/xhtml"><body><p id="multi">Alpha <span>beta  gamma</span>   delta.</p></body></html>`,
     );
@@ -242,17 +242,17 @@ try {
     assert(map.norm[rawToNormOffset(map, rawOff2)] === "g", "普通字符定位异常");
   });
 
-  check("偏移映射：译文子树不参与（td 场景注入后映射不变）", () => {
+  await check("偏移映射：译文子树不参与（td 场景注入后映射不变）", async () => {
     const parsed = parseSectionDocument(XHTML);
     const blocks = enumerateSectionBlocks(parsed);
-    injectSectionTranslations(parsed, blocks, { "7": { hash: "x", text: "尾段译文" } });
+    await injectSectionTranslations(parsed, blocks, { "7": { hash: "x", text: "尾段译文" } });
     const tail = blocks.find((b) => b.el.getAttribute("id") === "h");
     const map = buildBlockTextMap(tail.el);
     assert(map.norm === tail.sourceText, "注入后 norm 混入译文");
   });
 
   // ─── 批次 4d：Range 端点边界换算（rawBoundaryToNorm，标注镜像锚定链用） ───
-  check("边界换算：保留字符缝/折叠空白缝/段尾/越界", () => {
+  await check("边界换算：保留字符缝/折叠空白缝/段尾/越界", () => {
     const parsed = parseSectionDocument(
       `<html xmlns="http://www.w3.org/1999/xhtml"><body><p id="multi">Alpha <span>beta  gamma</span>   delta.</p></body></html>`,
     );
@@ -281,6 +281,44 @@ try {
     assert(rawBoundaryToNorm(map, map.rawToNorm.length) === map.norm.length, "段尾边界异常");
     assert(rawBoundaryToNorm(map, 9999) === map.norm.length, "越界钳制异常");
     assert(rawBoundaryToNorm(map, 0) === 0, "段首边界异常");
+  });
+
+  // ─── 公式通道（2026-10-10）：源标准化 / mathOnly / 译文 KaTeX 渲染 / 坐标一致 ───
+  const MATH_XHTML = `<html xmlns="http://www.w3.org/1999/xhtml"><body>
+<p id="m1">Energy is <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>E</mi><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math> in relativity.</p>
+<p id="m2"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mi>U</mi><annotation encoding="application/x-tex">U=\\sum_i m_i</annotation></semantics></math></p>
+<p id="m3">Plain paragraph without formulas.</p>
+</body></html>`;
+
+  await check("公式：math 序列化为 $..$/$$..$$，独占公式块标 mathOnly", () => {
+    const blocks = enumerateSectionBlocks(parseSectionDocument(MATH_XHTML));
+    assert(blocks[0].sourceText === "Energy is $E=mc^2$ in relativity.", `行内序列化异常: ${blocks[0].sourceText}`);
+    assert(blocks[1].sourceText === "$$U=\\sum_i m_i$$", `行间序列化异常: ${blocks[1].sourceText}`);
+    assert(!blocks[0].mathOnly && blocks[1].mathOnly && !blocks[2].mathOnly, "mathOnly 判定异常");
+  });
+
+  await check("公式：BlockTextMap norm === 含公式段的 sourceText", () => {
+    const parsed = parseSectionDocument(MATH_XHTML);
+    for (const block of enumerateSectionBlocks(parsed)) {
+      const map = buildBlockTextMap(block.el);
+      assert(map.norm === block.sourceText, `段 ${block.index} norm 漂移: ${JSON.stringify(map.norm)}`);
+    }
+  });
+
+  await check("公式：译文内 $..$ 渲染为 MathML，价格散文保持文本，空占位不挂译文块", async () => {
+    const parsed = parseSectionDocument(MATH_XHTML);
+    const blocks = enumerateSectionBlocks(parsed);
+    await injectSectionTranslations(parsed, blocks, {
+      "0": { hash: "x", text: "能量 $E=mc^2$ 与 $x = 5$ 以及价格 $5 and $10。" },
+      "1": { hash: "x", text: "" },
+    });
+    const div = parsed.doc.querySelector(`[${TRANSLATION_ATTR}][data-block-index="0"]`);
+    assert(div, "段 0 应挂译文块");
+    assert(div.querySelectorAll("math").length === 2, `应渲染 2 个 math，实际 ${div.querySelectorAll("math").length}`);
+    assert(div.lastChild.data.includes("$5 and $10"), `价格散文被误渲染: ${JSON.stringify(div.lastChild.data)}`);
+    assert(!parsed.doc.querySelector(`[${TRANSLATION_ATTR}][data-block-index="1"]`), "mathOnly 空占位不应挂译文块");
+    const map = buildBlockTextMap(div);
+    assert(map.norm === "能量 $E=mc^2$ 与 $x = 5$ 以及价格 $5 and $10。", `译文侧 norm 漂移: ${JSON.stringify(map.norm)}`);
   });
 
   console.log(`\n${passed} passed, ${failures.length} failed`);

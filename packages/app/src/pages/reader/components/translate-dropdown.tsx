@@ -130,7 +130,7 @@ const TranslateDropdown = () => {
             const file = await loadBookTranslationSection(bookId, content.index);
             if (!file) continue;
             const parsed = wrapSectionDocument(content.doc);
-            injectSectionTranslations(parsed, enumerateSectionBlocks(parsed), file.blocks);
+            await injectSectionTranslations(parsed, enumerateSectionBlocks(parsed), file.blocks);
           }
         } catch (error) {
           console.warn("注入译文到当前章节失败（翻章后自然生效）:", error);
