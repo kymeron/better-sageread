@@ -131,6 +131,14 @@ const expression = `
   check("openai gpt-6-luna 放行", v("openai", "gpt-6-luna") === true, "");
   check("grok grok-4.7 放行", v("grok", "grok-4.7") === true, "");
 
+  // ---- 2026-10-14 批次：GPT-6.1 Sol / Sonnet 5.5 / Haiku 5.5 / Mistral Large 4 / Muse Wonder（OpenRouter 目录核实图像输入） ----
+  check("openai gpt-6.1-sol 放行", v("openai", "gpt-6.1-sol") === true, "");
+  check("openai gpt-6.1-sol-pro 前缀放行", v("openai", "gpt-6.1-sol-pro") === true, "");
+  check("anthropic claude-sonnet-5-5 放行", v("anthropic", "claude-sonnet-5-5") === true, "");
+  check("anthropic claude-haiku-5-5 放行", v("anthropic", "claude-haiku-5-5") === true, "");
+  check("mistral mistral-large-4-0 前缀放行", v("mistral", "mistral-large-4-0") === true, "");
+  check("custom muse-wonder 放行", v("custom", "muse-wonder") === true, "");
+
   // ---- 自定义/未知端点：默认放行（维持现状原则） ----
   check("custom 自定义端点默认放行", v("custom", "my-model") === true, "");
   check("未知型号命名启发式兜底（新视觉命名）", v("deepseek", "deepseek-v9-vision-x") === true, "");
