@@ -4,14 +4,18 @@ import { cn } from "@/lib/utils";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import type * as React from "react";
 
-function TooltipProvider({ delayDuration = 0, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+function TooltipProvider({ delayDuration = 150, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delayDuration={delayDuration} {...props} />;
 }
 
-function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+// disableHoverableContent 默认开：指针离开触发器即关闭。Radix 默认（可悬停内容）下，离开触发器只清定时器、
+// 真正的关闭要靠"宽容区 pointermove 追踪"——该链路任一环断开，提示就悬住，直到点空白处/滚动才消失。
+// 需要把鼠标移进提示里选字的少数点位显式传 disableHoverableContent={false}。
+// delayDuration 0 → 150ms：鼠标只是扫过工具栏时不再逐个闪出提示。
+function Tooltip({ disableHoverableContent = true, ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
   return (
     <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+      <TooltipPrimitive.Root data-slot="tooltip" disableHoverableContent={disableHoverableContent} {...props} />
     </TooltipProvider>
   );
 }

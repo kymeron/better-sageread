@@ -1,4 +1,4 @@
-import { CitationMapContext, buildCitationMap } from "@/components/markdown/citation-source";
+import { CitationMapContext, getStableCitationMap } from "@/components/markdown/citation-source";
 import { ImagePreviewOverlay } from "@/components/media/image-interactions";
 import { ChatContainerContent, ChatContainerScrollAnchor } from "@/components/prompt-kit/chat-container";
 import { ChatNavBridgeContext } from "@/components/prompt-kit/chat-nav-bridge";
@@ -875,7 +875,7 @@ function ChatMessagesComponent({
 
     // 引用标来源映射：从本消息持久化的工具结果重建（paperSearch/ragSearch 等 output），
     // 随 React context 下发给正文里的 [N] 引用标弹窗；无工具结果为 null（弹窗走面板/store 兜底）
-    const citationMap = buildCitationMap(parts);
+    const citationMap = getStableCitationMap(messageId, parts);
     return (
       <CitationMapContext.Provider value={citationMap}>
         <div className="flex flex-col gap-1" data-message-id={messageId}>

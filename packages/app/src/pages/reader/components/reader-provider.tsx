@@ -33,3 +33,8 @@ export function useReaderStoreApi(): ReaderStore {
 
   return store;
 }
+
+/** 不抛错版：无 Provider 时返回 null。给"只在事件里读状态"的组件用，免去订阅高频字段（如阅读进度）引发的重渲染 */
+export function useOptionalReaderStoreApi(): ReaderStore | null {
+  return useContext(ReaderStoreContext);
+}

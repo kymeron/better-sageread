@@ -64,3 +64,42 @@ export function buildCitationMap(parts: any[]): ReadonlyMap<number, CitationSour
   }
   return map;
 }
+
+function sameCitationMap(
+  a: ReadonlyMap<number, CitationSource> | null,
+  b: ReadonlyMap<number, CitationSource> | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.size !== b.size) return false;
+  for (const [chunkId, x] of a) {
+    const y = b.get(chunkId);
+    if (!y || x.kind !== y.kind || x.title !== y.title) return false;
+    if ((x as any).paperId !== (y as any).paperId || (x as any).bookId !== (y as any).bookId) return false;
+  }
+  return true;
+}
+
+const mapByParts = new WeakMap<object, ReadonlyMap<number, CitationSource> | null>();
+const mapByMessage = new Map<string, ReadonlyMap<number, CitationSource> | null>();
+
+/**
+ * 引用映射的引用稳定版：CitationMapContext 的值引用一变，该消息里每个 [N] 引用标都会整体重渲染
+ * （每个都订阅着一串 store）。历史消息 parts 引用不变 → WeakMap 直接命中；流式中的消息 parts 每个 tick
+ * 换引用，但映射内容通常不变 → 与上次结果结构比较，相同则沿用旧引用。
+ */
+export function getStableCitationMap(
+  messageId: string | undefined,
+  parts: any[],
+): ReadonlyMap<number, CitationSource> | null {
+  const cacheable = Array.isArray(parts);
+  if (cacheable && mapByParts.has(parts)) return mapByParts.get(parts) ?? null;
+  let result = buildCitationMap(parts);
+  if (messageId) {
+    const prev = mapByMessage.get(messageId);
+    if (prev !== undefined && sameCitationMap(prev, result)) result = prev;
+    if (mapByMessage.size > 300) mapByMessage.clear();
+    mapByMessage.set(messageId, result);
+  }
+  if (cacheable) mapByParts.set(parts, result);
+  return result;
+}

@@ -8,8 +8,14 @@ import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { useChatReaderStore } from "@/store/chat-reader-store";
 import { useThemeStore } from "@/store/theme-store";
 import { Loader, SquareArrowOutUpRight } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { useAnnotationSearch } from "./hooks/use-annotation-search";
+
+/** 正文 Markdown（remark-math/katex 解析较重）降为低优先级渲染：首帧先出弹窗外壳，不与入场动画抢帧 */
+function DeferredMarkdown({ text }: { text: string }) {
+  const deferred = useDeferredValue(text, "");
+  return <Markdown>{deferred}</Markdown>;
+}
 
 export function AnnotationPopover({ chunkId, children }: { chunkId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -21,7 +27,7 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
   const readerBookId = useReaderStore((state) => state.bookId);
   const activeBookId = isChatPage ? chatActiveBookId : readerBookId;
 
-  const { swapSidebars } = useThemeStore();
+  const swapSidebars = useThemeStore((state) => state.swapSidebars);
   const { loading, chunkData, error, searching, source, fetchChunkData, searchAndNavigate, resetError } =
     useAnnotationSearch();
 
@@ -74,6 +80,17 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
     }
   }, [isChatPage, shouldShowRight]);
 
+  // 悬停约 120ms 预取原文片段：点开时数据已就绪，弹窗入场动画期间不再同时做 IPC + 解析
+  const prefetchTimer = useRef(0);
+  const prefetch = () => {
+    window.clearTimeout(prefetchTimer.current);
+    prefetchTimer.current = window.setTimeout(() => {
+      if (!chunkData && !loading && !error) fetchChunkData(chunkId);
+    }, 120);
+  };
+  const cancelPrefetch = () => window.clearTimeout(prefetchTimer.current);
+  useEffect(() => () => window.clearTimeout(prefetchTimer.current), []);
+
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (newOpen) {
@@ -115,7 +132,12 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <span ref={triggerRef} className="cursor-pointer text-primary hover:underline">
+        <span
+          ref={triggerRef}
+          className="cursor-pointer text-primary hover:underline"
+          onPointerEnter={prefetch}
+          onPointerLeave={cancelPrefetch}
+        >
           {children}
         </span>
       </PopoverTrigger>
@@ -184,7 +206,7 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
 
             <div className="flex-1 overflow-auto p-3 pt-0">
               <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-foreground text-sm leading-relaxed">
-                <Markdown>{chunkData.chunk_text}</Markdown>
+                <DeferredMarkdown text={chunkData.chunk_text} />
               </div>
             </div>
           </div>

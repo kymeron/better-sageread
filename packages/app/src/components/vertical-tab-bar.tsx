@@ -11,7 +11,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type Tab, useLayoutStore } from "@/store/layout-store";
 import { BookOpen, FileText, SquareX, X } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 /** 标签类型图标：论文 FileText、书籍 BookOpen */
 function TabTypeIcon({ tab, className }: { tab: Tab; className: string }) {
@@ -26,11 +27,42 @@ function TabTypeIcon({ tab, className }: { tab: Tab; className: string }) {
  * - 标签列表可滚动、可拖拽排序、中键关闭，按类型分组（书籍在前、论文在后）
  */
 export default function VerticalTabBar() {
-  const { tabs, activeTabId, activateTab, removeTab, reorderTab, sleptTabIds, closeAllTabs } = useLayoutStore();
+  const { tabs, activeTabId, activateTab, removeTab, reorderTab, sleptTabIds, closeAllTabs } = useLayoutStore(
+    useShallow((s) => ({
+      tabs: s.tabs,
+      activeTabId: s.activeTabId,
+      activateTab: s.activateTab,
+      removeTab: s.removeTab,
+      reorderTab: s.reorderTab,
+      sleptTabIds: s.sleptTabIds,
+      closeAllTabs: s.closeAllTabs,
+    })),
+  );
 
   const [dragTabId, setDragTabId] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const [closeAllOpen, setCloseAllOpen] = useState(false);
+  // 悬停意图：开 90ms / 关 160ms 滞后。无滞后时鼠标擦过左缘就闪开、移向浮层内提示/边缘时抖动收起
+  const openTimer = useRef(0);
+  const closeTimer = useRef(0);
+  const onBarEnter = () => {
+    window.clearTimeout(closeTimer.current);
+    if (hovered) return;
+    window.clearTimeout(openTimer.current);
+    openTimer.current = window.setTimeout(() => setHovered(true), 90);
+  };
+  const onBarLeave = () => {
+    window.clearTimeout(openTimer.current);
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setHovered(false), 160);
+  };
+  useEffect(
+    () => () => {
+      window.clearTimeout(openTimer.current);
+      window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   // 分组（携带原始索引，拖拽排序直接作用于 store 的 tabs 数组）
   const indexed = tabs.map((tab, index) => ({ tab, index }));
@@ -100,48 +132,45 @@ export default function VerticalTabBar() {
           <div className="mt-2 mb-0.5 px-2 text-neutral-400 text-xs dark:text-neutral-500">{label}</div>
         )}
         {items.map(({ tab, index }) => (
-          <Tooltip key={tab.id}>
-            <TooltipTrigger asChild>
-              <div
-                draggable
-                onDragStart={(e) => {
-                  setDragTabId(tab.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={() => setDragTabId(null)}
-                onAuxClick={(e) => {
-                  if (e.button === 1) {
-                    e.preventDefault();
-                    removeTab(tab.id);
-                  }
-                }}
-                className={`group flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] transition-colors ${
-                  tab.id === activeTabId
-                    ? "bg-neutral-200 font-medium text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
-                    : "text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-400 dark:hover:bg-neutral-700/60"
-                } ${dragTabId === tab.id ? "opacity-50" : sleptTabIds.includes(tab.id) ? "opacity-40" : ""}`}
-                onClick={() => activateTab(tab.id)}
-              >
-                <TabTypeIcon tab={tab} className="size-4 shrink-0" />
-                <span className="flex-1 truncate">{tab.title}</span>
-                <button
-                  type="button"
-                  className={`flex size-5 shrink-0 items-center justify-center rounded transition-opacity hover:bg-neutral-300 dark:hover:bg-neutral-600 ${
-                    tab.id === activeTabId ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeTab(tab.id);
-                  }}
-                  aria-label="关闭标签"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right">{tab.title}</TooltipContent>
-          </Tooltip>
+          <div
+            key={tab.id}
+            title={tab.title}
+            draggable
+            onDragStart={(e) => {
+              setDragTabId(tab.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragEnd={() => setDragTabId(null)}
+            onAuxClick={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                removeTab(tab.id);
+              }
+            }}
+            className={`group flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] transition-colors ${
+              tab.id === activeTabId
+                ? "bg-neutral-200 font-medium text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+                : "text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-400 dark:hover:bg-neutral-700/60"
+            } ${dragTabId === tab.id ? "opacity-50" : sleptTabIds.includes(tab.id) ? "opacity-40" : ""}`}
+            onClick={() => activateTab(tab.id)}
+          >
+            <TabTypeIcon tab={tab} className="size-4 shrink-0" />
+            <span className="flex-1 truncate">{tab.title}</span>
+            <button
+              type="button"
+              className={`flex size-5 shrink-0 items-center justify-center rounded transition-opacity hover:bg-neutral-300 dark:hover:bg-neutral-600 ${
+                tab.id === activeTabId ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeTab(tab.id);
+              }}
+              aria-label="关闭标签"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
         ))}
       </Fragment>
     );
@@ -151,8 +180,8 @@ export default function VerticalTabBar() {
     <div
       data-region="vertical-tabs"
       className="relative w-12 shrink-0 select-none"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={onBarEnter}
+      onMouseLeave={onBarLeave}
     >
       {/* 窄条（常驻，占位 48px） */}
       <div
@@ -186,7 +215,7 @@ export default function VerticalTabBar() {
 
       {/* 详细信息浮层（absolute，不推挤布局；隐藏时 pointer-events-none 不挡交互） */}
       <div
-        className={`absolute top-0 left-0 z-40 h-full w-[220px] border-neutral-200 bg-tab-background shadow-around transition-all duration-150 dark:border-neutral-700 ${
+        className={`absolute top-0 left-0 z-40 h-full w-[220px] border-neutral-200 bg-tab-background shadow-around transition-[opacity,transform] duration-150 dark:border-neutral-700 ${
           hovered ? "pointer-events-auto translate-x-0 opacity-100" : "-translate-x-1 pointer-events-none opacity-0"
         }`}
         style={{ borderRightWidth: 1 }}

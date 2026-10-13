@@ -4,7 +4,7 @@ import {
   type CitationSource,
 } from "@/components/markdown/citation-source";
 import { useIsChatPage } from "@/hooks/use-is-chat-page";
-import { useReaderStore } from "@/pages/reader/components/reader-provider";
+import { useOptionalReaderStoreApi, useReaderStore } from "@/pages/reader/components/reader-provider";
 import { requestPaperQuoteLocate } from "@/services/paper-locate-service";
 import { listPapers } from "@/services/paper-service";
 import { useChatReaderStore } from "@/store/chat-reader-store";
@@ -31,20 +31,13 @@ export function useAnnotationSearch() {
   const citationFallback = useContext(CitationFallbackContext);
 
   const chatActiveBookId = useChatReaderStore((state) => state.activeBookId);
-  const chatBookData = useChatReaderStore((state) => state.bookData);
-  const chatConfig = useChatReaderStore((state) => state.config);
 
+  // 阅读器的 view / progress / bookData / config 只在"查看原文"点击时才用：这里不订阅（progress 每翻页/滚动都变，
+  // 每个引用标订阅它会让整段回答里所有 [N] 跟着重渲染），事件里经 store api 现取
+  const readerStoreApi = useOptionalReaderStoreApi();
   const readerBookId = useReaderStore((state) => state.bookId);
-  const readerBookData = useReaderStore((state) => state.bookData);
-  const readerConfig = useReaderStore((state) => state.config);
-  const readerView = useReaderStore((state) => state.view);
-  const readerProgress = useReaderStore((state) => state.progress);
 
   const activeBookId = isChatPage ? chatActiveBookId : readerBookId;
-  const bookData = isChatPage ? chatBookData : readerBookData;
-  const config = isChatPage ? chatConfig : readerConfig;
-  const view = isChatPage ? null : readerView;
-  const progress = isChatPage ? null : readerProgress;
 
   /** chunkId → 来源：消息映射优先（跨文献准确），面板兜底其次，最后退回书籍阅读器/全局页的 store 书 id */
   const resolveSource = useCallback(
@@ -170,6 +163,12 @@ export function useAnnotationSearch() {
         setError("无法确定该引用的来源");
         return false;
       }
+      const readerState = isChatPage ? null : (readerStoreApi?.getState() ?? null);
+      const chatState = useChatReaderStore.getState();
+      const view = readerState?.view ?? null;
+      const progress = readerState?.progress ?? null;
+      const bookData = isChatPage ? chatState.bookData : readerState?.bookData;
+      const config = isChatPage ? chatState.config : readerState?.config;
       if (!view || !config || !bookData || !progress) {
         setError("阅读器未就绪，请稍后重试");
         return false;
@@ -250,7 +249,7 @@ export function useAnnotationSearch() {
     } finally {
       setSearching(false);
     }
-  }, [chunkData, source, activeBookId, view, config, bookData, progress]);
+  }, [chunkData, source, activeBookId, isChatPage, readerStoreApi]);
 
   return {
     loading,
