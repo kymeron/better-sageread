@@ -6,7 +6,6 @@ import { useIsChatPage } from "@/hooks/use-is-chat-page";
 import { cn } from "@/lib/utils";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { useChatReaderStore } from "@/store/chat-reader-store";
-import { useThemeStore } from "@/store/theme-store";
 import { Loader, SquareArrowOutUpRight } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { useAnnotationSearch } from "./hooks/use-annotation-search";
@@ -17,21 +16,23 @@ function DeferredMarkdown({ text }: { text: string }) {
   return <Markdown>{deferred}</Markdown>;
 }
 
+/** 悬停弹出 / 收起的意图延迟：避免鼠标擦过引用标就弹窗、或移向弹窗途中就收起 */
+const HOVER_OPEN_MS = 220;
+const HOVER_CLOSE_MS = 180;
+
 export function AnnotationPopover({ chunkId, children }: { chunkId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [sideOffset, setSideOffset] = useState(16);
+  // 点击"固定"：固定后移开鼠标不收起，点外部/Esc 才关；仅悬停弹出的移开即收
+  const pinnedRef = useRef(false);
   const isChatPage = useIsChatPage();
-  const triggerRef = useRef<HTMLSpanElement>(null);
 
   const chatActiveBookId = useChatReaderStore((state) => state.activeBookId);
   const readerBookId = useReaderStore((state) => state.bookId);
   const activeBookId = isChatPage ? chatActiveBookId : readerBookId;
 
-  const swapSidebars = useThemeStore((state) => state.swapSidebars);
   const { loading, chunkData, error, searching, source, fetchChunkData, searchAndNavigate, resetError } =
     useAnnotationSearch();
 
-  const shouldShowRight = isChatPage || swapSidebars;
   // 跳转按钮：论文来源任何页面可跳（openPaper + quote 定位总线）；书籍来源维持原行为（全局聊天页隐藏，
   // 因为 foliate view 只活在书籍 tab 内）
   const canNavigate = source?.kind === "paper" || !isChatPage;
@@ -45,79 +46,78 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
   const handleSearchInReader = useCallback(async () => {
     const success = await searchAndNavigate();
     if (success) {
+      pinnedRef.current = false;
       setOpen(false);
     }
   }, [searchAndNavigate]);
 
-  const calculateSideOffset = useCallback(() => {
-    if (!triggerRef.current) return;
-
-    try {
-      const triggerRect = triggerRef.current.getBoundingClientRect();
-      const chatSidebar = document.getElementById("chat-sidebar");
-      if (!chatSidebar && !isChatPage) {
-        return;
-      }
-
-      const sidebarRect = chatSidebar?.getBoundingClientRect();
-      if (!sidebarRect) return;
-
-      if (shouldShowRight) {
-        const chatWidth = sidebarRect.width;
-        const triggerLeft = triggerRect.left;
-        const offset = chatWidth - triggerLeft - 60;
-        const finalOffset = Math.max(16, offset);
-        setSideOffset(finalOffset);
-      } else {
-        const targetLeft = sidebarRect.left;
-        const currentLeft = triggerRect.left;
-        const offset = currentLeft - targetLeft - 4;
-        const finalOffset = Math.max(16, offset);
-        setSideOffset(finalOffset);
-      }
-    } catch (error) {
-      console.error("计算偏移量失败:", error);
-    }
-  }, [isChatPage, shouldShowRight]);
-
-  // 悬停约 120ms 预取原文片段：点开时数据已就绪，弹窗入场动画期间不再同时做 IPC + 解析
+  const openTimer = useRef(0);
+  const closeTimer = useRef(0);
   const prefetchTimer = useRef(0);
-  const prefetch = () => {
+  useEffect(
+    () => () => {
+      window.clearTimeout(openTimer.current);
+      window.clearTimeout(closeTimer.current);
+      window.clearTimeout(prefetchTimer.current);
+    },
+    [],
+  );
+
+  const openNow = () => {
+    if (!open) {
+      resetError();
+      if (!chunkData && !loading) fetchChunkData(chunkId);
+    }
+    setOpen(true);
+  };
+
+  // 悬停：约 120ms 预取原文片段，约 220ms 弹出；移开（触发器与弹窗都不在）约 180ms 后收起，已固定则不收
+  const onTriggerEnter = () => {
+    window.clearTimeout(closeTimer.current);
     window.clearTimeout(prefetchTimer.current);
     prefetchTimer.current = window.setTimeout(() => {
       if (!chunkData && !loading && !error) fetchChunkData(chunkId);
     }, 120);
+    if (open) return;
+    window.clearTimeout(openTimer.current);
+    openTimer.current = window.setTimeout(openNow, HOVER_OPEN_MS);
   };
-  const cancelPrefetch = () => window.clearTimeout(prefetchTimer.current);
-  useEffect(() => () => window.clearTimeout(prefetchTimer.current), []);
+  const onHoverLeave = () => {
+    window.clearTimeout(openTimer.current);
+    window.clearTimeout(prefetchTimer.current);
+    if (pinnedRef.current) return;
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setOpen(false), HOVER_CLOSE_MS);
+  };
+  const onContentEnter = () => window.clearTimeout(closeTimer.current);
 
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (newOpen) {
-      resetError();
-      calculateSideOffset();
-      if (!chunkData && !loading) {
-        fetchChunkData(chunkId);
-      }
+  // 点击：固定弹窗（再点已固定的则关闭）；preventDefault 拦掉 Radix 自带的开关切换，避免悬停已弹出时点击反而关掉
+  const onTriggerClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    window.clearTimeout(openTimer.current);
+    window.clearTimeout(closeTimer.current);
+    if (open && pinnedRef.current) {
+      pinnedRef.current = false;
+      setOpen(false);
+      return;
     }
+    pinnedRef.current = true;
+    openNow();
   };
 
-  useEffect(() => {
-    if (!open) return;
-
-    const handleResize = () => {
-      calculateSideOffset();
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [open, calculateSideOffset]);
+  // 仅响应 Radix 的外部关闭（点外部 / Esc）
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) return;
+    pinnedRef.current = false;
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!open || !activeBookId) return;
 
     const handleIframeClick = (event: MessageEvent) => {
       if (event.data?.type === "iframe-single-click" && event.data?.bookId === activeBookId) {
+        pinnedRef.current = false;
         setOpen(false);
       }
     };
@@ -133,18 +133,23 @@ export function AnnotationPopover({ chunkId, children }: { chunkId: string; chil
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <span
-          ref={triggerRef}
           className="cursor-pointer text-primary hover:underline"
-          onPointerEnter={prefetch}
-          onPointerLeave={cancelPrefetch}
+          onPointerEnter={onTriggerEnter}
+          onPointerLeave={onHoverLeave}
+          onClick={onTriggerClick}
         >
           {children}
         </span>
       </PopoverTrigger>
       <PopoverContent
-        side={shouldShowRight ? "right" : "left"}
+        // 贴着引用标弹出：优先上方，空间不足 Radix 自动翻到下方；不再把弹窗推到侧栏之外的阅读版面上
+        side="top"
         align="center"
-        sideOffset={sideOffset}
+        sideOffset={8}
+        collisionPadding={12}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onPointerEnter={onContentEnter}
+        onPointerLeave={onHoverLeave}
         className={cn(
           "max-h-96 overflow-auto p-0",
           // 有内容才撑固定宽；加载/空态/错误随内容自适应，不再撑 w-80 大框

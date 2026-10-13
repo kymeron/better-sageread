@@ -304,7 +304,10 @@ export default function McpTab() {
       ) : (
         <div className="space-y-2">
           {servers.map((server) => (
-            <div key={server.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div
+              key={server.id}
+              className="hover-glow flex items-center gap-3 rounded-lg border border-border px-3 py-2.5"
+            >
               <Plug className="size-4 flex-shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">

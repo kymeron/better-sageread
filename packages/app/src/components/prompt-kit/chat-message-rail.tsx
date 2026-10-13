@@ -6,8 +6,8 @@ import { ChatNavBridgeContext } from "./chat-nav-bridge";
 
 /** 刻度上限：轮次更多时分桶（每刻度代表一段连续轮次） */
 const MAX_TICKS = 26;
-/** 轮次少于此数不显示导航条 */
-const MIN_TURNS = 3;
+/** 轮次少于此数不显示导航条（1 轮没有可导航的内容） */
+const MIN_TURNS = 2;
 const OPEN_DELAY = 70;
 const CLOSE_DELAY = 220;
 const EXIT_MS = 180;

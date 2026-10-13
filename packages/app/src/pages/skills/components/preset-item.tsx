@@ -52,7 +52,7 @@ export default function PresetItem({ preset, onEdit }: PresetItemProps) {
   };
 
   return (
-    <div className="group relative select-auto rounded-xl bg-muted p-3 shadow-around">
+    <div className="hover-glow group relative select-auto rounded-xl border border-transparent bg-muted p-3 shadow-around">
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="flex-1 truncate text-lg">{preset.name}</span>
         <div className="flex items-center gap-2">

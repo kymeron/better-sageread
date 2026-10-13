@@ -32,10 +32,10 @@ export default function AIHubPage() {
             type="button"
             onClick={() => setActiveTab(id)}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm transition-colors",
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
               activeTab === id
-                ? "bg-background font-medium text-foreground shadow-sm"
-                : "hover-glow text-muted-foreground hover:text-foreground",
+                ? "border-primary/40 bg-primary/10 font-medium text-foreground shadow-sm"
+                : "hover-glow border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <Icon className="size-4" />

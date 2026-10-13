@@ -61,7 +61,10 @@ export default function QuickCommandsTab() {
           {cmds.map((cmd) => {
             const CmdIcon = getCommandIcon(cmd.icon);
             return (
-              <div key={cmd.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+              <div
+                key={cmd.id}
+                className="hover-glow flex items-center gap-2 rounded-lg border border-border px-3 py-2"
+              >
                 <CmdIcon className="size-3.5 flex-shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <span className="text-foreground text-sm">{cmd.label}</span>
