@@ -5,7 +5,9 @@ import { Message, MessageAction, MessageActions, MessageContent } from "@/compon
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/prompt-kit/reasoning";
 import { Tool } from "@/components/prompt-kit/tool";
 import { Button } from "@/components/ui/button";
+import { useEffectiveMotionMode } from "@/hooks/use-motion-mode";
 import { type ReasoningTimes, useReasoningTimer } from "@/hooks/use-reasoning-timer";
+import { useStreamReveal } from "@/hooks/use-stream-reveal";
 import { useTextSelection } from "@/hooks/use-text-selection";
 import { exportMessagesToImage } from "@/lib/export-thread-image";
 import { exportMessageToMarkdown } from "@/lib/export-thread-markdown";
@@ -145,6 +147,7 @@ function MessageImagePart({ url, alt, bookId }: { url: string; alt: string; book
   const [expanded, setExpanded] = useState(false);
   const [preview, setPreview] = useState(false);
   const [clippable, setClippable] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: src 变化（换图）时重置折叠状态，src 仅作触发器
   useEffect(() => {
     setExpanded(false);
     setClippable(false);
@@ -273,6 +276,35 @@ const MemoizedMarkdownContent = memo(
   (prev, next) => prev.text === next.text && prev.className === next.className && prev.markdown === next.markdown,
 );
 
+/**
+ * 流式文本揭示盒（2026-10-10 流式动效施工）：use-stream-reveal 把"到达"与"显示"解耦，
+ * 非 baseline 效果下 display = 追赶位切片 + 自管 overlay 雾带/水痕/光标；baseline 直通零开销。
+ * 三个聊天面（侧栏/AI 中心/论文聊天）共用 ChatMessages，单点集成。
+ * enabled=false（用户消息 / 动效模式非完整档）等价 baseline；streaming 仅在"正在接收本段文本"时为 true。
+ */
+function StreamRevealBox({
+  text,
+  streaming,
+  enabled,
+  className,
+  markdown,
+  onMouseUp,
+}: {
+  text: string;
+  streaming: boolean;
+  enabled: boolean;
+  className: string;
+  markdown: boolean;
+  onMouseUp?: () => void;
+}) {
+  const { wrapRef, display } = useStreamReveal(text, streaming, enabled);
+  return (
+    <div ref={wrapRef} className="relative min-w-0" onMouseUp={onMouseUp}>
+      <MemoizedMarkdownContent text={display} className={className} markdown={markdown} />
+    </div>
+  );
+}
+
 const MemoizedReasoningContent = memo(
   function MemoizedReasoningContent({ text }: { text: string }) {
     return (
@@ -326,16 +358,23 @@ const MemoizedTool = memo(
  */
 const ToolCallGroup = memo(function ToolCallGroup({
   parts,
+  active,
   onViewDetail,
   isChatPage,
 }: {
   parts: any[];
+  /** 所属消息仍在生成（最后一条消息且会话 submitted/streaming）：生成中展开跟随进度，结束后自动收起 */
+  active: boolean;
   onViewDetail?: (toolPart: any) => void;
   isChatPage: boolean;
 }) {
   const toolParts = parts.filter((p) => String(p.type).startsWith("tool-"));
   const running = toolParts.some((p) => p.state === "input-streaming" || p.state === "input-available");
-  const [open, setOpen] = useState(running);
+  const [open, setOpen] = useState(active && running);
+  const userToggled = useRef(false);
+  useEffect(() => {
+    if (!active && !userToggled.current) setOpen(false);
+  }, [active]);
   const names = Array.from(
     new Set(
       toolParts.map((p) => TOOL_NAME_MAP[String(p.type).replace(/^tool-/, "")] ?? String(p.type).replace(/^tool-/, "")),
@@ -352,7 +391,10 @@ const ToolCallGroup = memo(function ToolCallGroup({
     <div className="w-full">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          userToggled.current = true;
+          setOpen(!open);
+        }}
         className="flex w-full items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-1.5 text-left text-neutral-600 text-xs transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800/40 dark:text-neutral-300 dark:hover:bg-neutral-800"
       >
         {running ? (
@@ -361,7 +403,9 @@ const ToolCallGroup = memo(function ToolCallGroup({
           <Check className="size-3.5 shrink-0 text-neutral-400" />
         )}
         <span className="shrink-0">
-          {running ? `正在调用工具（${names.join("、")}…）` : `已调用 ${toolParts.length} 个工具（${names.join("、")}）`}
+          {running
+            ? `正在调用工具（${names.join("、")}…）`
+            : `已调用 ${toolParts.length} 个工具（${names.join("、")}）`}
         </span>
         {digest && <span className="min-w-0 flex-1 truncate text-neutral-400">{digest}</span>}
         <ChevronDown className={cn("size-3.5 shrink-0 text-neutral-400 transition-transform", open && "rotate-180")} />
@@ -427,6 +471,8 @@ function ChatMessagesComponent({
   const lastMessage = reorderTextAndReasoning(messages[messages.length - 1]);
   const reasoningPart = lastMessage?.parts?.findLast((part: UIMessagePart<any, any>) => part.type === "reasoning");
   const isStreaming = status === "streaming";
+  // 流式揭示动效仅在"完整动效"档生效（性能档 / 系统减少动态效果时回退到达即渲染）
+  const revealAllowed = useEffectiveMotionMode() === "full";
   const reasoningActive = isStreaming && !!reasoningPart && reasoningPart?.state === "streaming";
   const existingReasoningTimes = getReasoningTimes(lastMessage);
 
@@ -627,6 +673,8 @@ function ChatMessagesComponent({
   const renderMessageParts = (parts: any[], isLastMessage: boolean, isAssistant = true, messageId?: string) => {
     const elements: any[] = [];
     let textBuffer = "";
+    let bufferLastPartIndex = -1;
+    const lastTextPartIndex = parts.findLastIndex((p) => p?.type === "text");
 
     const flushText = () => {
       if (!textBuffer) return;
@@ -635,9 +683,16 @@ function ChatMessagesComponent({
         : "rounded-xl bg-muted p-2 text-base leading-5";
 
       elements.push(
-        <div key={`text-${elements.length}`} className="min-w-0" onMouseUp={handleTextSelection}>
-          <MemoizedMarkdownContent text={textBuffer} className={className} markdown={isAssistant} />
-        </div>,
+        <StreamRevealBox
+          key={`text-${elements.length}`}
+          text={textBuffer}
+          // 仅"最后一条消息的最后一段文本"且会话正在流式时才是接收中——历史消息/工具调用前的已完结段落不挂光标雾带
+          streaming={isAssistant && isLastMessage && isStreaming && bufferLastPartIndex === lastTextPartIndex}
+          enabled={isAssistant && revealAllowed}
+          className={className}
+          markdown={isAssistant}
+          onMouseUp={handleTextSelection}
+        />,
       );
       textBuffer = "";
     };
@@ -653,6 +708,7 @@ function ChatMessagesComponent({
 
       if (type === "text") {
         textBuffer += part.text ?? "";
+        bufferLastPartIndex = i;
         continue;
       }
 
@@ -682,7 +738,7 @@ function ChatMessagesComponent({
         const showTimer = displayTime !== undefined && displayTime >= 0;
 
         elements.push(
-          <Reasoning key={`reasoning-${i}`} isStreaming={isCurrentlyStreaming}>
+          <Reasoning key={`reasoning-${i}`}>
             <ReasoningTrigger className="flex items-center gap-1 text-muted-foreground">
               <div className="flex items-center gap-1 text-muted-foreground">
                 <Brain className="h-4 w-4" />
@@ -732,6 +788,7 @@ function ChatMessagesComponent({
             <ToolCallGroup
               key={`toolgroup-${i}`}
               parts={groupParts}
+              active={isLastMessage && (status === "submitted" || status === "streaming")}
               onViewDetail={onViewToolDetail}
               isChatPage={isChatPage}
             />,

@@ -1133,3 +1133,25 @@ foliate-view {
 .paper-content section[data-footnotes] li::marker {
   font-size: 0.9em;
 }
+
+/* ── 流式输出动效揭示层（hooks/use-stream-reveal.ts）overlay：打字机光标（mist 走 Highlight API，无 DOM 叠层） ── */
+.rv-caret {
+  position: absolute;
+  width: 0.55em;
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 2;
+}
+.rv-caret.idle {
+  animation: rv-blink 1.05s steps(2, start) infinite;
+}
+.rv-caret.gone {
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  animation: none;
+}
+@keyframes rv-blink {
+  50% {
+    opacity: 0;
+  }
+}

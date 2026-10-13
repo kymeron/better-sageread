@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>流式输出动效预览 v2 · SageRead</title>
+<style>
+  :root{
+    --bg:#0f1117; --card:#161a23; --line:#252b39; --fg:#e7eaf2; --dim:#8d94a8;
+    /* 动效色 = 全局主题 primary（styles/themes.ts 暗色口径）；集成时由主题 store 注入 */
+    --accent:#77bbee;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.9 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  header{max-width:1240px;margin:0 auto;padding:34px 24px 6px}
+  h1{font-size:21px;margin:0 0 6px;font-weight:650;letter-spacing:.01em}
+  header>p{color:var(--dim);margin:0 0 16px;max-width:860px;font-size:13.5px;line-height:1.8}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  button,select{background:#1d2230;border:1px solid var(--line);color:var(--fg);border-radius:8px;
+    padding:6px 14px;font:inherit;font-size:13px;cursor:pointer}
+  button:hover,select:hover{border-color:#3d465c}
+  button.primary{background:#233047;border-color:#3b4d6e}
+  .hint{color:var(--dim);font-size:12.5px}
+  .swatches{display:flex;gap:6px;align-items:center}
+  .sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+  .sw[aria-pressed="true"]{border-color:var(--fg)}
+  main{max-width:1240px;margin:0 auto;padding:14px 24px 40px;
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px 12px;
+    display:flex;flex-direction:column;gap:10px}
+  .chead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .chead h2{font-size:14.5px;margin:0 0 2px;font-weight:650;color:var(--accent)}
+  .chead p{margin:0;color:var(--dim);font-size:12px;line-height:1.7}
+  .chead button{flex:none;margin-top:2px}
+  .body{min-height:11em;white-space:pre-wrap;word-break:break-word;font-size:14.5px;line-height:2.05}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:9px}
+  .chips code{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);
+    background:#1a1f2b;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+  .tag{font-size:11px;color:var(--accent);border:1px solid color-mix(in oklab,var(--accent) 45%,transparent);
+    border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:1px}
+  footer{max-width:1240px;margin:0 auto;padding:0 24px 46px;color:var(--dim);font-size:12.5px;line-height:1.9}
+  /* ── 揭示层 ── */
+  .ch{opacity:0}
+  .ch.on{opacity:1}
+  /* 打字机 */
+  .fx-type .ch.on{animation:stamp .14s ease-out}
+  @keyframes stamp{from{opacity:.25;text-shadow:0 0 9px currentColor}to{opacity:1;text-shadow:none}}
+  .caret{display:inline-block;width:.55em;height:1.05em;background:var(--accent);
+    vertical-align:-.16em;margin:0 1px;border-radius:1px}
+  .caret.idle{animation:blink 1.05s steps(2,start) infinite}
+  .caret.gone{opacity:0;transition:opacity .45s ease;animation:none}
+  @keyframes blink{50%{opacity:0}}
+  /* 雾面-水流：雾边 = 10 字 smoothstep 透明度+模糊连续梯度（消除逐字步进）；
+     水痕 = 主题色先保持后衰减（opacity/blur 归雾边管，color 归水痕管，互不写同一属性） */
+  .fx-mist .ch{transition:none}
+  /* 密文-词组浮入：词为单元，scramble 阶段主题色纯闪烁（不加模糊），lock 阶段浮起归位并褪色 */
+  .fx-scrword .ch{opacity:1}
+  .fx-scrword .wd{opacity:0}
+  .fx-scrword .wd.scr{opacity:.92;color:var(--accent);transform:translateY(.28em)}
+  .fx-scrword .wd.lock{opacity:1;color:var(--fg);transform:none;
+    transition:transform .34s cubic-bezier(.22,.7,.3,1),color .7s ease,opacity .18s ease}
+</style>
+</head>
+<body>
+<header>
+  <h1>流式输出动效预览 v2</h1>
+  <p>v2 变更：基线保留且为<strong>默认</strong>；雾面并入水流（frontier 模糊 + 主题色水痕长时渐干）；
+     词组浮入单飞效果弱已移除，与密文解码融合为"密文·词组浮入"（逐词 scramble 可读节奏 + 落定浮起）；
+     打字机光标在回答结束后熄灭；所有动效色取自全局主题 primary（右上色板可切换主题验证呼应）。
+     v3：雾边改 10 字 smoothstep 连续梯度（消除"逐字跳"，到齐后匀速扫尾）；水痕改"前 45% 保持满浓度、后段褪干"曲线；密文阶段去模糊、只留纯闪烁。</p>
+  <div class="bar">
+    <button type="button" class="primary" id="playAll">▶ 全部播放</button>
+    <label class="hint">到达速度
+      <select id="speed">
+        <option value="0.6">0.6×（慢速观察）</option>
+        <option value="1" selected>1×</option>
+        <option value="1.7">1.7×（快速模型）</option>
+      </select>
+    </label>
+    <button type="button" id="sample">样本：中英混排</button>
+    <span class="swatches hint">主题
+      <button type="button" class="sw" data-accent="#77bbee" style="background:#77bbee" aria-pressed="true" title="Default"></button>
+      <button type="button" class="sw" data-accent="#d29a6a" style="background:#d29a6a" aria-pressed="false" title="羊皮纸"></button>
+      <button type="button" class="sw" data-accent="#ff646e" style="background:#ff646e" aria-pressed="false" title="Cherry"></button>
+      <button type="button" class="sw" data-accent="#a6d608" style="background:#a6d608" aria-pressed="false" title="Grass"></button>
+    </span>
+  </div>
+</header>
+<main id="grid"></main>
+<footer>
+  仅预览揭示层。集成时：到达回调不变、揭示策略可插拔；设置页"输出效果"选项<strong>默认=基线</strong>（用户裁定）；
+  动效色不硬编码，由主题 store 的 primary 注入 --accent（暗色口径取 themes.ts 的 dark primary）。
+  水痕渐干 1.5s、密文逐词停留 260–640ms，均为可调参数（见各卡 chips）。
+</footer>
+<script>
+"use strict";
+const SAMPLES = [
+  `流式渲染的体验差异，往往不在模型而在前端。token 到达的速度是 bursty 的：一阵急促、一段停顿。若把到达即渲染，文字便一个个蹦出；若在到达与显示之间加一层缓冲，让显示位置以弹簧追随到达位置，文本便如水流漫过纸面。Gemini 与 Copilot 的丝滑感正来自此类 chase 曲线——再配上 frontier 处轻微的模糊与透明度渐变，眼睛便再也察觉不到 token 的边界。`,
+  `Streaming feels smooth when the reveal layer decouples arrival from painting. Tokens land in bursts; a small buffer plus a critically damped chase turns those bursts into a continuous flow. The caret disappears, edges soften, and the paragraph reads like ink spreading on paper rather than a machine gun of glyphs. Pick the effect that matches the product's temperament, then make it a setting.`,
+];
+let sampleIdx = 0;
+const currentText = () => SAMPLES[sampleIdx];
+const getSpeed = () => Number(document.getElementById("speed").value);
+
+function buildSpans(container, text, mode) {
+  container.innerHTML = "";
+  const spans = [], wordOf = [], wordLast = [];
+  if (mode === "chars") {
+    for (const ch of text) {
+      const s = document.createElement("span");
+      s.className = "ch"; s.textContent = ch;
+      container.appendChild(s); spans.push(s);
+    }
+    return { spans, wordOf, wordLast };
+  }
+  let i = 0;
+  while (i < text.length) {
+    const m = /[A-Za-z0-9']+/.exec(text.slice(i));
+    const len = m && m.index === 0 ? m[0].length : 1;
+    const w = document.createElement("span");
+    w.className = "wd";
+    for (let k = 0; k < len; k++) {
+      const s = document.createElement("span");
+      s.className = "ch"; s.textContent = text[i + k];
+      w.appendChild(s); spans.push(s); wordOf.push(w); wordLast.push(i + len - 1);
+    }
+    container.appendChild(w);
+    i += len;
+  }
+  return { spans, wordOf, wordLast };
+}
+
+function makeScheduler(text, emit, onDone) {
+  let pos = 0, t = null, dead = false;
+  const step = () => {
+    if (dead) return;
+    pos = Math.min(text.length, pos + 1 + ((Math.random() * 3) | 0));
+    emit(pos);
+    if (pos >= text.length) { onDone?.(); return; }
+    const prev = text[pos - 1];
+    let d = 26 + Math.random() * 72;
+    if ("。！？；…".includes(prev)) d += 170 + Math.random() * 230;
+    else if ("，、：,;:".includes(prev)) d += 50 + Math.random() * 90;
+    t = setTimeout(step, d / getSpeed());
+  };
+  return {
+    start() { dead = false; pos = 0; t = setTimeout(step, 150); },
+    stop() { dead = true; clearTimeout(t); },
+  };
+}
+
+/* ── 基线 · 到达即渲染（默认效果，保留对照） ── */
+function fxBase(body) {
+  let spans = [], shown = 0;
+  return {
+    reset(text) { spans = buildSpans(body, text, "chars").spans; shown = 0; },
+    chunk(n) { for (let i = shown; i < n; i++) spans[i].classList.add("on"); shown = n; },
+    frame() {},
+  };
+}
+
+/* ── 雾面-水流：chase 追随 + frontier 模糊/透明渐变 + 主题色水痕 1.5s 渐干（含残余模糊消散） ── */
+function fxMist(body) {
+  const TAU = 120, N = 10, BLUR = 7, DRY = 1600, HOLD = 0.45, SWEEP = N / 250;
+  let spans = [], recv = 0, disp = 0, prevFl = 0, settle = [], dryPtr = 0, fogPtr = 0, sweep = 0, total = 0;
+  return {
+    reset(text) {
+      spans = buildSpans(body, text, "chars").spans;
+      recv = 0; disp = 0; prevFl = 0; settle = new Array(spans.length).fill(0);
+      dryPtr = 0; fogPtr = 0; sweep = 0; total = spans.length;
+    },
+    chunk(n) { recv = n; },
+    frame(now, dt) {
+      disp += (recv - disp) * (1 - Math.exp(-dt / TAU));
+      if (recv - disp < 0.02) disp = recv;
+      // 到齐后雾边匀速扫尾：否则末尾 N 字会永远停在半透明（edge 不再前进）
+      let edge = disp;
+      if (recv >= total && disp >= total - 0.02) {
+        if (!sweep) sweep = disp;
+        sweep = Math.min(total + N, sweep + dt * SWEEP);
+        edge = Math.max(disp, sweep);
+      }
+      const fl = Math.floor(disp);
+      for (let i = prevFl; i < fl && i < spans.length; i++) {
+        spans[i].classList.add("on");
+        settle[i] = now;
+      }
+      prevFl = Math.max(prevFl, fl);
+      // 雾边：[edge-N, edge) 上 smoothstep 梯度——透明度/模糊随浮点 edge 每帧连续变化，
+      // 10 字宽的空间衰减把"逐字步进"融进梯度；出窗字由 fogPtr 清回类样式
+      const wStart = Math.max(0, edge - N);
+      while (fogPtr < wStart) {
+        spans[fogPtr].style.opacity = "";
+        spans[fogPtr].style.filter = "";
+        fogPtr += 1;
+      }
+      const wEnd = Math.min(Math.ceil(edge), spans.length);
+      for (let i = Math.max(fogPtr, Math.floor(wStart)); i < wEnd; i++) {
+        const d = edge - i;
+        if (d <= 0) continue;
+        const t = Math.min(1, d / N);
+        const e = t * t * (3 - 2 * t);
+        spans[i].style.opacity = e >= 1 ? "" : e.toFixed(3);
+        spans[i].style.filter = e >= 1 ? "" : `blur(${((1 - e) * BLUR).toFixed(2)}px)`;
+      }
+      // 水痕：主题色在 DRY 的前 HOLD 段保持满浓度，之后 smoothstep 褪向正文色（color 只归水痕管）
+      while (dryPtr < fl && (now - settle[dryPtr]) / DRY >= 1) {
+        spans[dryPtr].style.color = "";
+        dryPtr += 1;
+      }
+      for (let i = dryPtr; i < fl; i++) {
+        const t = (now - settle[i]) / DRY;
+        const f = t < HOLD ? 0 : (t - HOLD) / (1 - HOLD);
+        const e = f * f * (3 - 2 * f);
+        spans[i].style.color = `color-mix(in oklab, var(--accent) ${Math.round((1 - e) * 85)}%, var(--fg))`;
+      }
+    },
+  };
+}
+
+/* ── 复古打字机：步距+抖动、句读停顿、落键闪光；主题色光标，回答结束 0.5s 后熄灭 ── */
+function fxType(body) {
+  let spans = [], recv = 0, shown = 0, acc = 0, nextDelay = 260, caret = null, lastStep = 0, doneAt = 0;
+  return {
+    reset(text) {
+      spans = buildSpans(body, text, "chars").spans;
+      recv = 0; shown = 0; acc = 0; nextDelay = 260; doneAt = 0;
+      caret = document.createElement("span");
+      caret.className = "caret";
+      body.insertBefore(caret, spans[0]);
+      lastStep = performance.now();
+    },
+    chunk(n) { recv = n; },
+    frame(now, dt) {
+      if (shown < recv) {
+        acc += dt;
+        while (shown < recv && acc >= nextDelay) {
+          acc -= nextDelay;
+          const s = spans[shown];
+          s.classList.add("on", "stamp");
+          shown += 1;
+          if (s.nextSibling !== caret) s.after(caret);
+          const ch = s.textContent;
+          let d = 30 + Math.random() * 26;
+          if ("。！？；…".includes(ch)) d += 240;
+          else if ("，、：,.:".includes(ch)) d += 90;
+          nextDelay = d;
+          lastStep = now;
+        }
+      } else acc = 0;
+      const done = shown >= spans.length && recv >= spans.length;
+      if (done) {
+        if (!doneAt) doneAt = now;
+        caret.classList.remove("idle");                 // 结束先常亮半秒
+        if (now - doneAt > 500) caret.classList.add("gone");
+      } else {
+        caret.classList.toggle("idle", now - lastStep > 350);
+      }
+    },
+  };
+}
+
+/* ── 密文·词组浮入：词到齐后进入 scramble（75ms/帧、260–640ms 停留，可读），
+     落定时换真文并浮起归位、主题色褪回正文色；级联推进，积压过多自动加速 ── */
+function fxScrWord(body) {
+  const POOL = "01アイウエオカキクケコサシスセソタチツテトナニヌネノ#$%&*+-<=>?^_abcxyz";
+  const FLIP = 75, CONC = 3;
+  let words = [], real = [], cumLast = [], recv = 0, armed = 0, pi = 0, active = [], lastFlip = 0;
+  const scramble = (w) => {
+    for (const s of w.children) s.textContent = POOL[(Math.random() * POOL.length) | 0];
+  };
+  return {
+    reset(text) {
+      const b = buildSpans(body, text, "words");
+      words = [...new Set(b.wordOf)];
+      real = words.map((w) => w.textContent);
+      cumLast = [];
+      let acc = 0;
+      for (const r of real) { acc += r.length; cumLast.push(acc - 1); }
+      recv = 0; armed = 0; pi = 0; active = []; lastFlip = 0;
+    },
+    chunk(n) { recv = n; },
+    frame(now) {
+      while (armed < words.length && recv > cumLast[armed]) armed += 1;
+      // 3 词并发解码波：单词停留保持可读，整体排空速度 ×3（串行会慢于到达、尾巴拖太长）
+      while (active.length < CONC && pi < armed) {
+        const backlog = armed - pi;
+        const a = {
+          w: words[pi],
+          pi,
+          t0: now,
+          dur: Math.min(640, 260 + 45 * real[pi].length) * (backlog > 9 ? 0.6 : 1),
+        };
+        a.w.classList.add("scr");
+        scramble(a.w);
+        active.push(a);
+        pi += 1;
+      }
+      if (active.length === 0) return;
+      if (now - lastFlip >= FLIP) {
+        for (const a of active) scramble(a.w);
+        lastFlip = now;
+      }
+      const done = active.filter((a) => now - a.t0 >= a.dur);
+      if (done.length === 0) return;
+      for (const a of done) {
+        const r = real[a.pi];
+        const chars = a.w.children;
+        for (let i = 0; i < chars.length; i++) chars[i].textContent = r[i];
+        a.w.classList.remove("scr");
+        a.w.classList.add("lock");
+      }
+      active = active.filter((a) => now - a.t0 < a.dur);
+    },
+  };
+}
+
+/* ── 卡片装配 ── */
+const CARDS = [
+  { id: "base", name: "基线 · 到达即渲染", tag: "默认", tagline: "当前 SageRead 行为，保留为默认效果与对照", chips: ["无缓冲", "默认"], fx: fxBase },
+  { id: "mist", name: "雾面-水流", tag: "", tagline: "chase 追随（tau=120ms）；雾边 = 10 字 smoothstep 透明度+模糊连续梯度（消除逐字步进，结束后匀速扫尾）；水痕 = 主题色前 45% 保持满浓度后褪干", chips: ["tau 120ms", "雾边 10 字梯度", "水痕 1.6s·前 45% 保持"], fx: fxMist },
+  { id: "type", name: "复古打字机", tag: "", tagline: "30–56ms/字 + 抖动、句读停顿、落键闪光；主题色光标，回答结束 0.5s 后熄灭", chips: ["30–56ms/字", "光标结束熄灭"], fx: fxType },
+  { id: "scrword", name: "密文·词组浮入", tag: "", tagline: "逐词 scramble 停留 260–640ms（75ms/帧，看得清）；3 词并发解码波；落定换真文并浮起、主题色褪回", chips: ["词单元", "停留 260–640ms", "并发 3"], fx: fxScrWord },
+];
+
+const grid = document.getElementById("grid");
+const cards = [];
+let sharedSched = null;
+
+for (const cfg of CARDS) {
+  const el = document.createElement("section");
+  el.className = "card fx-" + cfg.id;
+  el.innerHTML =
+    '<div class="chead"><div><h2></h2><p></p></div><button type="button">重播</button></div>' +
+    '<div class="body"></div><div class="chips"></div>';
+  const h2 = el.querySelector("h2");
+  h2.textContent = cfg.name;
+  if (cfg.tag) { const t = document.createElement("span"); t.className = "tag"; t.textContent = cfg.tag; h2.appendChild(t); }
+  el.querySelector("p").textContent = cfg.tagline;
+  el.querySelector(".chips").innerHTML = cfg.chips.map((c) => `<code>${c}</code>`).join("");
+  const body = el.querySelector(".body");
+  const card = { cfg, body, effect: cfg.fx(body), sched: null, muted: false };
+  el.querySelector("button").addEventListener("click", () => replaySolo(card));
+  grid.appendChild(el);
+  cards.push(card);
+}
+
+function resetCard(card, text) {
+  card.sched?.stop();
+  card.sched = null;
+  card.effect.reset(text);
+}
+function replaySolo(card) {
+  card.muted = true;
+  resetCard(card, currentText());
+  card.sched = makeScheduler(currentText(), (n) => card.effect.chunk(n));
+  card.sched.start();
+}
+function playAll() {
+  sharedSched?.stop();
+  for (const c of cards) { c.muted = false; resetCard(c, currentText()); }
+  sharedSched = makeScheduler(currentText(), (n) => {
+    for (const c of cards) if (!c.muted) c.effect.chunk(n);
+  });
+  sharedSched.start();
+}
+
+document.getElementById("playAll").addEventListener("click", playAll);
+document.getElementById("sample").addEventListener("click", (e) => {
+  sampleIdx = (sampleIdx + 1) % SAMPLES.length;
+  e.currentTarget.textContent = sampleIdx === 0 ? "样本：中英混排" : "样本：English";
+  playAll();
+});
+for (const sw of document.querySelectorAll(".sw")) {
+  sw.addEventListener("click", () => {
+    document.documentElement.style.setProperty("--accent", sw.dataset.accent);
+    for (const o of document.querySelectorAll(".sw")) o.setAttribute("aria-pressed", String(o === sw));
+  });
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(64, now - last);
+  last = now;
+  for (const c of cards) c.effect.frame(now, dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+playAll();
+</script>
+</body>
+</html>

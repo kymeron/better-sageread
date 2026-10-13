@@ -26,11 +26,10 @@ export type ReasoningProps = {
   className?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  isStreaming?: boolean;
 };
-function Reasoning({ children, className, open, onOpenChange, isStreaming }: ReasoningProps) {
+// 默认折叠（含思考进行中）：展开与否完全由用户点击决定，不再随流式自动展开/收起
+function Reasoning({ children, className, open, onOpenChange }: ReasoningProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [wasAutoOpened, setWasAutoOpened] = useState(false);
 
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
@@ -41,18 +40,6 @@ function Reasoning({ children, className, open, onOpenChange, isStreaming }: Rea
     }
     onOpenChange?.(newOpen);
   };
-
-  useEffect(() => {
-    if (isStreaming && !wasAutoOpened) {
-      if (!isControlled) setInternalOpen(true);
-      setWasAutoOpened(true);
-    }
-
-    if (!isStreaming && wasAutoOpened) {
-      if (!isControlled) setInternalOpen(false);
-      setWasAutoOpened(false);
-    }
-  }, [isStreaming, wasAutoOpened, isControlled]);
 
   return (
     <ReasoningContext.Provider

@@ -12,7 +12,7 @@ import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useThemeStore } from "@/store/theme-store";
 import { useUpdateStore } from "@/store/update-store";
 import type { ThemeMode } from "@/styles/themes";
-import type { MotionModeType } from "@/types/settings";
+import type { MotionModeType, StreamRevealType } from "@/types/settings";
 import { getVersion } from "@tauri-apps/api/app";
 import { appDataDir } from "@tauri-apps/api/path";
 import { exists, mkdir } from "@tauri-apps/plugin-fs";
@@ -41,6 +41,14 @@ export default function GeneralSettings() {
     { value: "full" as MotionModeType, label: "完整动效" },
     { value: "fade-only" as MotionModeType, label: "仅淡入淡出" },
     { value: "system" as MotionModeType, label: "遵循系统" },
+  ];
+  // 流式输出动效（use-stream-reveal 施工；demo v3 裁定）：默认基线 = 到达即渲染
+  const streamReveal: StreamRevealType = settings.streamReveal ?? "baseline";
+  const streamRevealOptions = [
+    { value: "baseline" as StreamRevealType, label: "到达即渲染" },
+    { value: "mist" as StreamRevealType, label: "雾面-水流" },
+    { value: "type" as StreamRevealType, label: "复古打字机" },
+    { value: "scr" as StreamRevealType, label: "密文解码" },
   ];
 
   // 进入设置页时扫描一次主题列表（内置 + 用户主题文件夹；仅扫描不重注入，避免全局重渲染）
@@ -281,6 +289,35 @@ export default function GeneralSettings() {
                     key={option.value}
                     onClick={() => setSettings({ ...settings, motionMode: option.value })}
                     className={clsx("my-0.5", motionMode === option.value ? "bg-accent" : "")}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text dark:text-neutral-200">输出动效</span>
+              <p className="mt-2 text-neutral-600 text-xs dark:text-neutral-400">
+                AI
+                流式回复的揭示动效：基线为到达即渲染；雾面-水流带追赶缓冲与尾端雾化；复古打字机逐字落键；密文解码尾端乱码翻动落定。动效模式非「完整动效」时自动回退为基线
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="w-32 justify-between">
+                  {streamRevealOptions.find((option) => option.value === streamReveal)?.label ?? "到达即渲染"}
+                  <ChevronDownIcon className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-32">
+                {streamRevealOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onClick={() => setSettings({ ...settings, streamReveal: option.value })}
+                    className={clsx("my-0.5", streamReveal === option.value ? "bg-accent" : "")}
                   >
                     {option.label}
                   </DropdownMenuItem>

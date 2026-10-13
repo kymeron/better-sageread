@@ -47,6 +47,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryCoverFit: "crop",
   paperViewMode: "original",
   motionMode: "full",
+  streamReveal: "baseline",
 
   lastSyncedAtBooks: 0,
   lastSyncedAtConfigs: 0,

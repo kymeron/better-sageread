@@ -37,7 +37,8 @@ function ChatContainerRoot({
   children,
   className,
   autoScroll = true,
-  resize = "instant",
+  // 内容增高（流式每多一行）时用弹簧动画平滑跟随底部；instant 会让整页每长一行就瞬间跳一行
+  resize = "smooth",
   initial = "instant",
   contextRef,
   ...props
@@ -47,6 +48,12 @@ function ChatContainerRoot({
       className={cn("flex overflow-y-auto overflow-x-hidden", className)}
       resize={resize}
       initial={initial}
+      // 临界阻尼弹簧（每帧 v' = 0.8v + 0.01·差距；时间常数 ≈10 帧/170ms）：出字很快的模型每批渲染会一次塞进几行，
+      // 库默认值（0.7/0.05/1.25，时间常数 ≈75ms）追得太利落，批与批之间就是一顿一顿；放缓后批间速度变化被抹平。
+      // 代价是视口底部比最新文字滞后约 2 个时间常数，用户上滑/滚轮/选字仍会照常脱离跟随
+      damping={0.8}
+      stiffness={0.01}
+      mass={1}
       contextRef={contextRef}
       role="log"
       {...props}
