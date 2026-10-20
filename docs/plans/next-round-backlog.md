@@ -410,13 +410,21 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
    - `gemini-4-argon`（Google Gemini 4 Argon）：恒思考、thinkingLevel low/medium/high（默认 medium、拒绝 minimal/thinkingBudget）、1M 统一上下文、gpt 视觉放行；long decode（xhigh/max 扩大 maxOutputTokens）未接，随发布版另做。
    - `minimax-m3.1-flash`（MiniMax M3.1 Flash，发布前匿名代号 **Space Bunny**）：恒思考（disabled/none→400）、reasoning_effort low/medium/high/xhigh/max（默认 max）、1M 上下文、多模态；**顺手补了 MiniMax 请求体分派分支**（此前 minimax-m3/m2.5/h3 三行是死条目）。
    - 三处副本同步（site/maps + 打包 + Books_Converter 视觉移植），maps-sync-check 绿；冒烟断言已加。**远程热更新未部署**（需 push main 后 EdgeOne 自动重建），当前 dev/打包表已生效。
-4. **本地向量化 / 本地大模型可用性实测与修复**（用户反馈 Ollama 本地向量模型 failed to fetch；仓库从未实测）
-   - 现状：外部嵌入端点已支持 OpenAI 兼容与 Ollama 原生（`/api/embed` 按 URL 尾部识别）；`docs/plans/0-4-1-discussion.md` §3 只有排查清单，无实测结论。
-   - 待办：① 起真实 Ollama（bge-m3）跑「连接自检 → 向量化 → 检索」全链路；② 确认 embedding 请求实际通道（渲染进程 fetch localhost 的 CSP/MixedContent 风险 vs Rust 侧 reqwest）；③ 本地 LLM（Ollama / LM Studio，OpenAI 兼容）补预设 + `/v1/models` 自动发现；④ 错误翻译（ECONNREFUSED → 「Ollama 未启动」类可操作文案）；⑤ 记录维度/模型兼容矩阵与「换模型需全库重建」提示口径。
+4. **本地向量化 / 本地大模型可用性实测与修复** —— ✅ 已完成（2026-10-20 实测验收口径）
+   - **failed to fetch 根因已定位并修复**：正式版 Windows 页面 Origin `http://tauri.localhost` 不在 Ollama 默认 CORS 白名单（dev 的 `localhost:1420` 在，故只在正式版复现）→ 设置页连接测试 + 句对齐 embed 改走 `@tauri-apps/plugin-http`（Rust 侧出网），并补「本地服务未启动」错误翻译。
+   - **实测通过**：向量 `embeddinggemma-2:440m`（768 维，100% GPU，热身后单条 0.15s；《伊豆の踊子》568 chunks 本地索引 25.6s，云端同书 112.7s）；LLM `qwen3.8:27b-q4_K_M`（27.3B Q4_K_M，61% GPU，热身后约 8 tok/s，tools/thinking 可用）；App 自定义 provider `/v1/models` 自动发现 + generateText 实跑通过。
+   - 用户决策：**不做 App 内 GGUF 下载服务**；Windows 上本地模型只走外部服务（Ollama 等）；两个测试模型**保留**（16.8GB，方便后续使用）。App 内 provider/向量模型条目保留但不设为当前。
+   - 环境：用户 Ollama 官方 0.40.2 太旧 → 测试用 portable 0.40.6（官方安装器升级需点一次 UAC，待用户完成）；实际模型目录 `F:\ProgramFiles\ollama_models` ≠ 环境变量 `F:\OllamaModels`（待统一）。
+   - 全部细节/管理小抄/清理记录 → `docs/audits/local-model-ollama-test-2026-10-20.md`。
 
 ### ⏸ 搁置（2026-10-20 用户拍板，不排期）
 
 - **Books_Converter 新版本（2.0+）搬进 SageRead 的计划暂缓**：BC 那边准备推进大版本更新（仍在研发摸索阶段），**不急着把新版本搬过来**；
   当前 SageRead 配套的仍是 BC 1.3.9。注意：**SageRead 模型表移植到 BC（视觉表同步）不属于这条计划，照常维护**（本次 2026-10-20 批次已同步）。
 - **移动端开发整体搁置**：Android 端口、移动端首页/抽屉语义、L2 移动端同步语义等移动端相关事项暂不推进，等主线稳定后再议。
+- **macOS / Linux 适配未开始（待议）**：目前只做 Windows；用户无 Mac 硬件，且 Mac 签名/分发有许可成本。跨平台调试路径待议：
+  ① GitHub Actions 的 macOS/Linux runner（最现实的无硬件方案：编译 + WebDriver 冒烟）；
+  ② Linux 可用 WSL2/虚拟机本地验证（Tauri Linux 依赖 webkit2gtk 等）；
+  ③ macOS 只能云 Mac（GH Actions macos runner / MacStadium 等），本地虚拟机不合规且难跑 WebKit 差异；
+  ④ 三端 WebView 差异（WebView2 / WKWebView / WebKitGTK）是主要风险点，先用 CI 编译 + 关键路径冒烟兜底。
 

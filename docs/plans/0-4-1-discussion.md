@@ -32,13 +32,16 @@
 
 **用户反馈**：Ollama 本地向量模型报 failed to fetch（未复现）。
 
-**排查先行（施工第一步）**：
-- Ollama 端点分歧：`/api/embeddings`（原生）vs `/v1/embeddings`（OpenAI 兼容）——先确认我们向量模型配置走的是哪个路径、自定义 baseUrl 是否允许 http://localhost（tauri http 插件对 http://*:* 已放行，但渲染进程 fetch localhost 有 MixedContent/CSP 坑，走 Rust 侧 reqwest 则无此问题——查 embedding 请求实际走的通道）。
-- 加「连接自检」按钮 + 错误翻译（ECONNREFUSED → "Ollama 未启动"类可操作文案）。
+**排查结论（2026-10-20 已实测定位并修复）**：
+- **failed to fetch 根因 = CORS**：正式版 Windows 页面 Origin 是 `http://tauri.localhost`，不在 Ollama 默认 CORS 白名单（dev 的 `http://localhost:1420` 恰好在白名单内 → 所以开发环境永远复现不了）。实测带 Origin 直连 Ollama 返回 403。
+- 受影响的是**渲染进程直连**的调用：设置页「连接自检」和翻译「句对齐」的 embed（`paper-alignment-service`）；**Rust 侧向量化（reqwest）无 CORS**，所以"索引能跑、测试/对齐挂"。
+- 修复：两处改走 `@tauri-apps/plugin-http`（Rust 侧出网、无 Origin），并补「无法连接本地服务：请确认 Ollama 已启动」错误翻译。详见 `docs/audits/local-model-ollama-test-2026-10-20.md`。
+- 端点通道确认：Rust vectorizer 与对齐服务都按 URL 尾部识别 Ollama `/api/embed`（响应 `embeddings[][]`）与 OpenAI `/v1/embeddings`，两条都实测通过。
+- 本地 LLM 接入：自定义 OpenAI 兼容 provider 基建已存在（factory 默认分支 = openai-compatible + plugin-http，`/v1/models` 自动发现走 Rust），Ollama `http://127.0.0.1:11434/v1` 实测可用；预设文案后续可补（不阻塞）。
 
-**本地 LLM 接入**（Ollama / LM Studio）：
-- 两家都是 OpenAI 兼容端点（localhost:11434/v1、localhost:1234/v1）——查 providers/factory.ts 的自定义 OpenAI 兼容端点基建是否已有；有则补预设 + `/v1/models` 自动发现模型列表。
-- 定位：辅助模型任务（标题生成/对话压缩）优先接入，聊天主模型亦可。
+**本地 LLM 接入**（Ollama / LM Studio，2026-10-20 实测通过）：
+- 基建已存在，无需新协议：`providers/factory.ts` 默认分支即 openai-compatible + plugin-http，`/v1/models` 自动发现走 Rust。实测 Ollama `http://127.0.0.1:11434/v1` + `qwen3.8:27b-q4_K_M`：发现 220ms、app 内 generateText 实跑成功（本机约 8 tok/s，61% GPU）。
+- 后续可选打磨（不阻塞）：设置页本地 provider 预设文案、错误提示、模型能力标注（tools/thinking）。
 - 向量模型维持「不提倡但允许」：本地模型维度/质量不一，换模型需全库重建（链路已有）；移动端共享统一向量库的麻烦照旧提示。
 
 ## 4. PDF 解析更新（跟 Books_Converter 侧定型联动）

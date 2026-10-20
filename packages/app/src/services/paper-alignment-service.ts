@@ -30,6 +30,7 @@ import {
 import { segmentSentences } from "@/pages/paper-reader/paper-sentences";
 import { useLlamaStore } from "@/store/llama-store";
 import { type VectorModelConfig, getCurrentVectorModelConfig } from "@/utils/model";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import {
   type PaperTranslationBlock,
   type PaperTranslationFile,
@@ -117,7 +118,10 @@ export async function embedBatch(
   const body = isOllama
     ? { model: config.model, input: texts }
     : { input: texts, model: config.model, encoding_format: "float" };
-  const res = await fetch(config.embeddingsUrl, {
+  // CORS 修复（2026-10-20）：句对齐在渲染进程跑，正式版 Windows 页面 Origin 是
+  // http://tauri.localhost，Ollama 默认 CORS 白名单不含它 → Failed to fetch（dev 的
+  // http://localhost:1420 在白名单内所以不复现）。改走 plugin-http（Rust 侧出网，无 Origin）。
+  const res = await tauriFetch(config.embeddingsUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(body),

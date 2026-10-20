@@ -8,6 +8,7 @@ import { type VectorModelConfig, useLlamaStore } from "@/store/llama-store";
 import { useTaskCenterStore } from "@/store/task-center-store";
 import { normalizeEmbeddingsUrl } from "@/utils/model";
 import { ask } from "@tauri-apps/plugin-dialog";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { type as getOsType } from "@tauri-apps/plugin-os";
 import { ChevronDown, CircuitBoard, Cloud, Edit2, Info, Plus, Server, Trash2, X } from "lucide-react";
@@ -252,9 +253,9 @@ export default function VectorModelManager() {
   const detectModelDimension = async (model: VectorModelConfig, statusMessage: string) => {
     setTestingId(model.id);
     setTestResults((prev) => ({ ...prev, [model.id]: statusMessage }));
+    const testUrl = normalizeEmbeddingsUrl(model.url);
 
     try {
-      const testUrl = normalizeEmbeddingsUrl(model.url);
       const isOllama = testUrl.endsWith("/api/embed");
 
       const headers: Record<string, string> = {
@@ -276,7 +277,11 @@ export default function VectorModelManager() {
             encoding_format: "float",
           };
 
-      const res = await fetch(testUrl, {
+      // CORS 修复（2026-10-20）：正式版 Windows 的页面 Origin 是 http://tauri.localhost，
+      // Ollama 默认 CORS 白名单不含它 → 浏览器 fetch 直接 Failed to fetch（dev 的
+      // http://localhost:1420 恰好在白名单里，故只会在正式版复现）。改走 plugin-http
+      // （Rust 侧出网，不带 Origin，天然绕 CORS；capabilities 已放通 http://*:*）。
+      const res = await tauriFetch(testUrl, {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
@@ -300,7 +305,15 @@ export default function VectorModelManager() {
       setTestResults((prev) => ({ ...prev, [model.id]: msg }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setTestResults((prev) => ({ ...prev, [model.id]: `连接失败: ${message}` }));
+      // 错误翻译：本地服务最常见的失败是"没启动/端口不通"，原始 fetch 报错无信息量
+      const isLocalTarget = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/)/i.test(testUrl);
+      const connectionFailed =
+        /failed to fetch|error sending request|connection refused|ECONNREFUSED|actively refused/i.test(message);
+      const hint =
+        connectionFailed && isLocalTarget
+          ? `（无法连接本地服务：请确认服务已启动且端口正确——Ollama 可运行 "ollama serve" 或看托盘图标）`
+          : "";
+      setTestResults((prev) => ({ ...prev, [model.id]: `连接失败: ${message}${hint}` }));
     } finally {
       setTestingId(null);
     }
