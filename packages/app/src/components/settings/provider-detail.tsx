@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { fetchModelsFromProvider } from "@/services/provider-service";
 import { useProviderStore } from "@/store/provider-store";
+import { isLocalEndpoint } from "@/utils/provider-url";
 import { throttle } from "@/utils/throttle";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2 } from "lucide-react";
@@ -59,6 +60,15 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
 
   const handleAddModel = (newModel: Omit<Model, "active" | "description" | "capabilities" | "manual">) => {
     if (!provider) return;
+
+    // 幂等：同 id 模型不重复添加（避免手动/刷新叠加出多份）
+    const normalizedId = newModel.id.trim();
+    if (!normalizedId) return;
+    const duplicated = provider.models.some((model) => model.id.trim().toLowerCase() === normalizedId.toLowerCase());
+    if (duplicated) {
+      toast.info("模型已存在", { description: `「${normalizedId}」已在列表中，可用刷新功能同步启用状态` });
+      return;
+    }
 
     const modelWithDefaults = {
       ...newModel,
@@ -158,9 +168,18 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
         baseUrl: provider.baseUrl,
       });
 
-      const existingModelMap = new Map(provider.models.map((model) => [model.id, model]));
+      // 归一化 + 去重（服务端可能返回重复/空白 id；同一模型只保留一条）
+      const fetchedIds = [...new Set(modelIds.map((id) => id.trim()).filter(Boolean))];
 
-      const newModels: Model[] = modelIds.map((id) => {
+      const existingModelMap = new Map<string, Model>();
+      for (const model of provider.models) {
+        const key = model.id.trim();
+        const prev = existingModelMap.get(key);
+        // 同 id 重复时优先保留手动条目（手动条目通常带用户改动）
+        if (!prev || (!prev.manual && model.manual)) existingModelMap.set(key, model);
+      }
+
+      const fetchedModels: Model[] = fetchedIds.map((id) => {
         const existing = existingModelMap.get(id);
         return {
           id,
@@ -168,13 +187,16 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
           active: existing?.active ?? false,
           description: existing?.description ?? "",
           capabilities: existing?.capabilities ?? [],
-          manual: false,
+          manual: existing?.manual ?? false,
         };
       });
 
-      const existingManualModels = provider.models.filter((model) => model.manual === true);
+      // 仅保留服务端列表里没有的手动模型（否则与 fetchedModels 重复）
+      const manualOnlyModels = provider.models.filter(
+        (model) => model.manual === true && !fetchedIds.includes(model.id.trim()),
+      );
 
-      const updatedModels = [...newModels, ...existingManualModels];
+      const updatedModels = [...fetchedModels, ...manualOnlyModels];
 
       updateProvider(providerId, {
         models: updatedModels,
@@ -233,7 +255,7 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
           onMouseEnter={() => setIsHoveringName(true)}
           onMouseLeave={() => setIsHoveringName(false)}
         >
-          <ProviderIcons providerId={providerId} />
+          <ProviderIcons providerId={providerId} provider={provider} />
           {isEditingName ? (
             <Input
               ref={inputRef}
@@ -259,15 +281,23 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
         <div className="flex items-center gap-2">
           <div
             onClick={() => {
-              if (provider && !provider.active && !provider.apiKey?.trim()) {
+              const needsKey =
+                provider && !provider.active && !isLocalEndpoint(provider.baseUrl) && !provider.apiKey?.trim();
+              if (needsKey && provider) {
                 toast.info("请先填写 API Key", { description: `在下方填写 API Key 后再启用「${provider.name}」` });
               }
             }}
           >
             <Switch
               checked={provider?.active ?? true}
-              disabled={!provider?.active && !provider?.apiKey?.trim()}
-              className={!provider?.active && !provider?.apiKey?.trim() ? "pointer-events-none" : undefined}
+              disabled={
+                !!provider && !provider.active && !isLocalEndpoint(provider.baseUrl) && !provider.apiKey?.trim()
+              }
+              className={
+                provider && !provider.active && !isLocalEndpoint(provider.baseUrl) && !provider.apiKey?.trim()
+                  ? "pointer-events-none"
+                  : undefined
+              }
               onCheckedChange={(checked) => handleFieldChange("active", checked)}
             />
           </div>

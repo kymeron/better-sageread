@@ -414,7 +414,8 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
    - **failed to fetch 根因已定位并修复**：正式版 Windows 页面 Origin `http://tauri.localhost` 不在 Ollama 默认 CORS 白名单（dev 的 `localhost:1420` 在，故只在正式版复现）→ 设置页连接测试 + 句对齐 embed 改走 `@tauri-apps/plugin-http`（Rust 侧出网），并补「本地服务未启动」错误翻译。
    - **实测通过**：向量 `embeddinggemma-2:440m`（768 维，100% GPU，热身后单条 0.15s；《伊豆の踊子》568 chunks 本地索引 25.6s，云端同书 112.7s）；LLM `qwen3.8:27b-q4_K_M`（27.3B Q4_K_M，61% GPU，热身后约 8 tok/s，tools/thinking 可用）；App 自定义 provider `/v1/models` 自动发现 + generateText 实跑通过。
    - 用户决策：**不做 App 内 GGUF 下载服务**；Windows 上本地模型只走外部服务（Ollama 等）；两个测试模型**保留**（16.8GB，方便后续使用）。App 内 provider/向量模型条目保留但不设为当前。
-   - 环境：用户 Ollama 官方 0.40.2 太旧 → 测试用 portable 0.40.6（官方安装器升级需点一次 UAC，待用户完成）；实际模型目录 `F:\ProgramFiles\ollama_models` ≠ 环境变量 `F:\OllamaModels`（待统一）。
+   - 环境：用户已升级官方 Ollama 0.40.6；模型目录已统一为 `F:\OllamaModels`（Ollama App 设置 + 环境变量一致，旧目录删除）。
+   - 顺带 UI 修复（2026-10-21）：提供商列表「x 个模型」改为**启用**模型数（并修掉 1 个时不显示数字的 bug）；Ollama 品牌图标；本地服务 API Key 提示（可留空，不再拦截启用）；获取模型列表去重（手动/自动同 id 不再重复）；「手动」标识加 tooltip；模型页补「ollama pull → 刷新启用」引导。
    - 全部细节/管理小抄/清理记录 → `docs/audits/local-model-ollama-test-2026-10-20.md`。
 
 ### ⏸ 搁置（2026-10-20 用户拍板，不排期）

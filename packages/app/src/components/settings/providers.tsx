@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useProviderStore } from "@/store/provider-store";
+import { isLocalEndpoint } from "@/utils/provider-url";
 import { Plus, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcons } from "./settings-dialog";
@@ -14,11 +15,15 @@ interface ProvidersSettingsProps {
 export default function ProvidersSettings({ onProviderSelect }: ProvidersSettingsProps) {
   const { modelProviders, utilityModel, setModelProviders, setUtilityModel, addProvider } = useProviderStore();
 
+  // 本地服务（Ollama / LM Studio 等）通常不需要 API Key，允许直接启用
+  const canEnableWithoutKey = (provider: ModelProvider) =>
+    isLocalEndpoint(provider.baseUrl) || !!provider.apiKey?.trim();
+
   const toggleProviderEnabled = (providerId: string) => {
     const provider = modelProviders.find((p) => p.provider === providerId);
     if (!provider) return;
-    // 无 API key 时禁止开启
-    if (!provider.active && !provider.apiKey?.trim()) {
+    // 云端服务商无 API Key 时禁止开启；本地端点免 Key
+    if (!provider.active && !canEnableWithoutKey(provider)) {
       toast.info("请先填写 API Key", { description: `进入「${provider.name}」设置页配置 API Key 后再启用` });
       onProviderSelect?.(providerId);
       return;
@@ -68,18 +73,17 @@ export default function ProvidersSettings({ onProviderSelect }: ProvidersSetting
         <div className="space-y-2">
           {modelProviders.map((provider, index) => {
             const providerName = provider.name;
-            const modelCount = provider.models.length;
+            // 语义：已启用的模型数（不是列表总数）
+            const modelCount = provider.models.filter((model) => !!model.active).length;
 
             return (
               <div key={provider.provider} className={cn("pt-2", index === 0 ? "" : "border-t")}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <ProviderIcons providerId={provider.provider} />
+                    <ProviderIcons providerId={provider.provider} provider={provider} />
                     <div>
                       <span className="text-sm dark:text-neutral-200">{providerName}</span>
-                      <p className="text-gray-600 text-xs dark:text-neutral-400">
-                        {modelCount === 1 ? "个模型" : `${modelCount} 个模型`}
-                      </p>
+                      <p className="text-gray-600 text-xs dark:text-neutral-400">{`${modelCount} 个模型`}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -93,7 +97,7 @@ export default function ProvidersSettings({ onProviderSelect }: ProvidersSetting
                     </Button>
                     <div
                       onClick={() => {
-                        if (!provider.active && !provider.apiKey?.trim()) {
+                        if (!provider.active && !canEnableWithoutKey(provider)) {
                           toast.info("请先填写 API Key", {
                             description: `进入「${provider.name}」设置页配置 API Key 后再启用`,
                           });
@@ -103,8 +107,10 @@ export default function ProvidersSettings({ onProviderSelect }: ProvidersSetting
                     >
                       <Switch
                         checked={provider.active}
-                        disabled={!provider.active && !provider.apiKey?.trim()}
-                        className={!provider.active && !provider.apiKey?.trim() ? "pointer-events-none" : undefined}
+                        disabled={!provider.active && !canEnableWithoutKey(provider)}
+                        className={
+                          !provider.active && !canEnableWithoutKey(provider) ? "pointer-events-none" : undefined
+                        }
                         onCheckedChange={() => toggleProviderEnabled(provider.provider)}
                       />
                     </div>

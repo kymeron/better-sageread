@@ -6,6 +6,7 @@ import {
   Gemini,
   Grok,
   Moonshot,
+  Ollama,
   OpenAI,
   OpenRouter,
   Qwen,
@@ -15,6 +16,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useProviderStore } from "@/store/provider-store";
+import { isOllamaEndpoint } from "@/utils/provider-url";
 import { ChevronRight, Server } from "lucide-react";
 import { useState } from "react";
 import AgentSettings from "./agent-settings";
@@ -65,7 +67,13 @@ interface SettingsItem {
   children?: SettingsItem[];
 }
 
-export function ProviderIcons({ providerId }: { providerId: string }): React.ReactNode {
+export function ProviderIcons({
+  providerId,
+  provider,
+}: {
+  providerId: string;
+  provider?: ModelProvider;
+}): React.ReactNode {
   switch (providerId) {
     case "openai":
       return <OpenAI className="h-4 w-4" />;
@@ -90,6 +98,10 @@ export function ProviderIcons({ providerId }: { providerId: string }): React.Rea
     case "doubao":
       return <Doubao className="h-4 w-4" />;
     default:
+      // 自定义提供商：识别 Ollama（名称/默认端口），否则回退服务器图标
+      if (provider?.icon === "ollama" || isOllamaEndpoint(provider?.baseUrl) || /ollama/i.test(provider?.name ?? "")) {
+        return <Ollama className="h-4 w-4" />;
+      }
       return <Server className="h-4 w-4" />;
   }
 }
@@ -220,7 +232,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             )}
           >
             {item.key.startsWith("provider-") ? (
-              <ProviderIcons providerId={item.key.replace("provider-", "")} />
+              <ProviderIcons
+                providerId={item.key.replace("provider-", "")}
+                provider={modelProviders.find((p) => p.provider === item.key.replace("provider-", ""))}
+              />
             ) : item.icon ? (
               <item.icon className="h-4 w-4" />
             ) : null}

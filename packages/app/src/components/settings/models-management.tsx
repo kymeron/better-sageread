@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { isLocalEndpoint } from "@/utils/provider-url";
 import { Pencil, Plus, RefreshCcw, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ModelEditDialog from "./model-edit-dialog";
@@ -147,6 +148,14 @@ export default function ModelsManagement({
         </div>
       </div>
 
+      {isLocalEndpoint(provider?.baseUrl) && (
+        <p className="text-neutral-500 text-xs dark:text-neutral-400">
+          先在 Ollama 中 <code className="rounded bg-muted px-1 py-0.5 text-[11px]">ollama pull 模型名</code> 或{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">ollama create</code>，再点上方「刷新」同步；
+          本地服务无需 API Key，打开开关即可在阅读器里选用。
+        </p>
+      )}
+
       {refreshError && (
         <div className="rounded-md bg-red-50 p-3 text-red-700 text-xs dark:bg-red-900/20 dark:text-red-200">
           <strong>错误：</strong> {refreshError}
@@ -192,7 +201,7 @@ export default function ModelsManagement({
       <div className="space-y-3">
         {filteredModels.map((model, index) => (
           <div
-            key={model.id}
+            key={`${model.id}-${model.originalIndex}`}
             className={cn(
               "flex items-center justify-between border-neutral-200 border-t pt-3 pr-1 dark:border-neutral-700",
               index === 0 && "border-t-0 pt-1",
@@ -209,9 +218,14 @@ export default function ModelsManagement({
                     {model.name?.trim() || model.id}
                   </span>
                   {model.manual && (
-                    <span className="rounded bg-neutral-200 px-1 py-0.5 text-neutral-700 text-xs dark:bg-neutral-700 dark:text-neutral-300">
-                      手动
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="cursor-help rounded bg-neutral-200 px-1 py-0.5 text-neutral-700 text-xs dark:bg-neutral-700 dark:text-neutral-300">
+                          手动
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>手动添加的模型：刷新列表时仍会保留，不会被服务端返回的列表覆盖</TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
                 {model.name && model.name.trim() !== model.id && (

@@ -55,8 +55,8 @@
 
 - **保留**：Ollama 模型 `qwen3.8:27b-q4_K_M`（16GB）+ `embeddinggemma-2:440m`（671MB），模型库总量 16.83GB（已清掉 registry 下载残留的 16.25GB partial 临时文件）；App 内保留「Ollama 本地」自定义 provider 与本地向量模型条目（均未设为当前，方便以后一键切换）。
 - **恢复**：dev 实例当前向量模型 = 智谱 `embedding-3`（2048 维），《伊豆の踊子》已用云端模型重建索引并回写 metadata（568 chunks / 2048 维 / success）；当前聊天/辅助模型 = DeepSeek `deepseek-flash`。
-- **官方 Ollama 待升级**：测试用的是 portable 0.40.6（`F:\Ollama-0.40.6\bin`，配 `F:\Ollama-0.40.6\start-portable.ps1` 启动；官方安装器 0.40.6 已由 Ollama 自己缓存在 updater 里，用户点一次更新即走正规安装）。官方 0.40.2 服务当前已停止，重启机器后托盘会以 0.40.2 启动，**新模型将不可用** —— 建议尽快完成官方升级。
-- **目录统一建议**：Ollama 实际模型目录 `F:\ProgramFiles\ollama_models`，与用户环境变量 `F:\OllamaModels` 不一致，建议升级后统一（会涉及移动模型文件，先确认再动）。
+- **官方 Ollama 已升级**：用户已升级官方 Ollama 至 0.40.6（`F:\Ollama`，托盘服务运行中）；portable 0.40.6 仅测试期使用，已清理。
+- **模型目录已统一（2026-10-21）**：Ollama 模型库从 `F:\ProgramFiles\ollama_models` 迁移到 `F:\OllamaModels`（与用户环境变量一致）；Ollama App 的模型路径设置（`%LOCALAPPDATA%\Ollama\db.sqlite` → settings.models）同步更新，旧目录已删除，重启后 `/api/tags` 正常列出两个模型。备份：`db.sqlite.bak-20261021`。
 
 ## 4. 已知限制 / 待办（含管理小抄）
 
