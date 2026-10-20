@@ -110,4 +110,15 @@ export const predefinedProviders: ModelProvider[] = [
     provider: "doubao",
     models: [],
   },
+  // ==================== 本地服务（OpenAI 兼容，免 Key） ====================
+  {
+    // 本地 LM Studio：需在 LM Studio → Developer → Local Server 启动服务（默认 1234）
+    active: false,
+    apiKey: "",
+    name: "LM Studio",
+    baseUrl: "http://127.0.0.1:1234/v1",
+    baseUrlHelpUrl: "https://lmstudio.ai/docs/developer/openai-compat",
+    provider: "lmstudio",
+    models: [],
+  },
 ];

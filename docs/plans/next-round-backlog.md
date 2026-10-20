@@ -425,7 +425,7 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
    - 全部细节/管理小抄/清理记录 → `docs/audits/local-model-ollama-test-2026-10-20.md`。
 5. **模型提供商 / 向量模型体验二批** —— ✅ 已落地（2026-10-21）
    - 侧聊天**模型选择器下拉图标修复**：抽出共享 `components/provider-icon.tsx`（预置厂商品牌 SVG + 自定义 provider 按名称/端点识别 Ollama、LM Studio，未知回退服务器图标）；此前自定义 provider 的 icon 映射为 `null`，Ollama/CherryIN 等整组无图标。
-   - **LM Studio 支持**：品牌图标 + `127.0.0.1:1234` 端点识别；获取模型列表时用其 `/api/v0/models` 的 type 过滤掉 embedding 模型；向量模型预设新增 LM Studio（`/v1/embeddings`、免 Key）。
+   - **LM Studio 支持**：品牌图标 + `127.0.0.1:1234` 端点识别；获取模型列表时用其 `/api/v0/models` 的 type 过滤掉 embedding 模型；向量模型预设新增 LM Studio（`/v1/embeddings`、免 Key）；**并新增 LM Studio 预定义模型提供商**（provider id `lmstudio`，baseUrl `http://127.0.0.1:1234/v1`，本地免 Key；provider-store v4 迁移为存量用户补齐该条目）。
    - **Ollama 获取模型列表只留对话模型**：用原生 `/api/show` 的 capabilities（completion/tools）过滤，嵌入模型（embeddinggemma 等）不再混入聊天模型列表；过滤失败/为空回退原列表。
    - Ollama 向量模型预设与本地部署指引从 `bge-m3` 更新为 **`embeddinggemma-2:440m`**（768 维，约 0.7GB，2026-10 新版），并补 LM Studio 指引。
    - **向量模型页改版 demo**：`docs/mockups/vector-model-page-demo.html` + `:png` 截图（v2，用户评审通过，按反馈调整）：

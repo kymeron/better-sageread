@@ -68,7 +68,7 @@ export const useProviderStore = create<ProviderState>()(
     {
       name: tauriStorageKey.modelProvider,
       storage: createJSONStorage(() => tauriStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version: number) => {
         if (version < 1) {
           // v0→v1: 合并新增的预定义提供商（保留用户已有配置不动）
@@ -91,6 +91,15 @@ export const useProviderStore = create<ProviderState>()(
           persistedState.modelProviders = (persistedState.modelProviders ?? []).map((p: ModelProvider) =>
             p.provider === "qwen" && /^阿里百炼/.test(p.name ?? "") ? { ...p, name: "阿里云百炼" } : p,
           );
+        }
+        if (version < 4) {
+          // v3→v4: 合并新增的预定义提供商（如 LM Studio 本地服务）；用户已有同 id 配置不覆盖
+          const existing: ModelProvider[] = persistedState.modelProviders ?? [];
+          const existingIds = new Set(existing.map((p) => p.provider));
+          const missing = predefinedProviders.filter((p) => !existingIds.has(p.provider));
+          if (missing.length > 0) {
+            persistedState.modelProviders = [...existing, ...missing];
+          }
         }
         return persistedState;
       },
