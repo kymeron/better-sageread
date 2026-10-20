@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14",
+  "updatedAt": "2026-10-20",
   "models": {
     "o1": {
       "alwaysOn": false,
@@ -206,6 +206,12 @@
       "transport": "effort"
     },
     "gemini-3.8-flash": {
+      "alwaysOn": true,
+      "offParam": null,
+      "levels": ["low", "medium", "high"],
+      "transport": "effort"
+    },
+    "gemini-4-argon": {
       "alwaysOn": true,
       "offParam": null,
       "levels": ["low", "medium", "high"],
@@ -751,6 +757,12 @@
       "offParam": "thinking:disabled",
       "levels": [],
       "transport": "switch"
+    },
+    "minimax-m3.1-flash": {
+      "alwaysOn": true,
+      "offParam": null,
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "transport": "effort"
     },
     "ernie-5.0": {
       "alwaysOn": false,

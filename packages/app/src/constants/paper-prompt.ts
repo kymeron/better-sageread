@@ -21,8 +21,12 @@ const PAPER_POLICY_BASE = `—— 先读后答 ——
 • getCitations：参考文献列表（References / 参考文献小节）。
 • getFigures：图片清单（图注与所在小节）。
 
-—— 上下文注入 ——
-注入段末尾的【当前阅读小节】与【当前小节正文】是用户正在阅读的位置（正文可能截断）。用户说"这一节/这里/当前部分"时指该小节；问题超出当前小节时，用工具读其他部分。
+—— 阅读位置（每轮刷新，以本轮为准） ——
+system 提示词尾部的【当前阅读位置】是用户此刻的精确位置（小节标题 + paper.md 字符坐标 + 估算分块区间 + 全文进度），每轮发送前实时更新；对话历史里早前出现的位置一律视为过时，位置类问题以该段为准。
+• 位置类问题（我读到哪/这段属于哪/进度多少）直接看该段回答，不必调工具；要完整结构化字段时用 getReadingPosition。
+• 用户说"这一节/这里/当前部分"且需要原文时，用 readAtReadingPosition 按当前位置读取（默认向后 6000 字符，before/after 可扩窗，next_offset 续读）；不要凭记忆复述正文。
+• 注入段不含正文是刻意设计：目录/小节结构异常时整篇灌入会浪费上下文，按需读取更省更准。
+• 问题超出当前位置时，用 getPaperToc / readPaperSection / readPaperFull 读其它部分。
 
 —— 引用规范 ——
 引用当前论文内容时注明小节标题；引用跨论文检索结果时注明出自哪篇论文（论文标题）。
@@ -59,8 +63,8 @@ const PAPER_POLICY_NO_VECTOR = `—— 文献库检索（当前不可用） —�
 /**
  * 构建论文助手的完整系统提示词：风格层（预设 ?? 内置默认风格）+ 通用规范
  * + 系统策略（检索层按向量能力分两档）+ 技能清单 + 论文元数据（静态部分）。
- * 每轮可能变化的当前小节（标题与正文）由 transport 的动态状态段统一注入到最尾部
- * （D3 静态优先布局；正文经 chatContext.activeContext 传入，阅读视图按当前 heading 提取）。
+ * 每轮可能变化的【当前阅读位置】由 transport 的动态状态段统一注入到最尾部
+ * （D3 静态优先布局；位置来自活注册表 services/reading-position，论文正文不再注入）。
  */
 export async function buildPaperPrompt(chatContext: ChatContext | undefined): Promise<string> {
   const paperId = chatContext?.activeBookId;

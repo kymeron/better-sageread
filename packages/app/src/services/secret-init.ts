@@ -30,6 +30,7 @@ const TTS_STORAGE_KEY = "tts-config-storage";
 const WEB_SEARCH_FIELDS: Record<string, string> = {
   bochaKey: "bocha",
   zhipuKey: "zhipu",
+  deepseekKey: "deepseek",
   tavilyKey: "tavily",
   serperKey: "serper",
 };
@@ -142,14 +143,16 @@ async function loadKeyringIntoMemory(): Promise<void> {
 
   // 网络搜索
   const webSearchStore = useWebSearchStore.getState();
-  const [bocha, zhipu, tavily, serper] = await Promise.all([
+  const [bocha, zhipu, deepseek, tavily, serper] = await Promise.all([
     readSecret("web-search", "bocha"),
     readSecret("web-search", "zhipu"),
+    readSecret("web-search", "deepseek"),
     readSecret("web-search", "tavily"),
     readSecret("web-search", "serper"),
   ]);
   if (bocha) webSearchStore.setBochaKey(bocha);
   if (zhipu) webSearchStore.setZhipuKey(zhipu);
+  if (deepseek) webSearchStore.setDeepseekKey(deepseek);
   if (tavily) webSearchStore.setTavilyKey(tavily);
   if (serper) webSearchStore.setSerperKey(serper);
 

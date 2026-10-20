@@ -8,6 +8,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import { rangeToStructuredText } from "@/services/book-content/extract-structured-text";
+import { setLiveReadingPosition } from "@/services/reading-position/live-position";
+import type { PaperRawPosition } from "@/types/reading-position";
 import { ChevronDown, ChevronUp, ImageOff, Undo2 } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -17,6 +19,7 @@ import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { toast } from "sonner";
+import { type PaperSectionHeading, findSectionHeading, parsePaperSections } from "./markdown-sections";
 import {
   PAPER_CONTEXT_LENGTH,
   anchorToRanges,
@@ -70,6 +73,8 @@ export interface TocItem {
 export interface PaperReaderHandle {
   /** 滚动到标题（id = rehype-slug 锚点）；未命中返回 false（笔记位置跳转的降级链用） */
   scrollToHeading: (id: string) => boolean;
+  /** 恢复精确阅读位置：标题锚点 + 小节内比例（0..1）；未命中返回 false（打开论文恢复上次位置用） */
+  scrollToPosition: (headingId: string, fraction: number) => boolean;
   /** C2 AI 标亮：批量 quote → 锚点换算（基于当前渲染 DOM；容器未就绪时全部返回 null） */
   locateQuotes: (quotes: string[]) => (PaperHighlightLocation | null)[];
   /** 图表速跳：图注/表注 quote 全文查找 → 滚动定位 + 闪烁强调；未命中返回 false */
@@ -102,13 +107,23 @@ export interface PaperTranslationContext {
   wordAlignments: ReadonlyMap<number, PaperAlignPair[]>;
 }
 
+/** 精确阅读位置上报载荷：PaperRawPosition（活位置注册表/提示词注入契约）+ 小节内比例（落库恢复锚点） */
+export interface PaperPositionReport extends PaperRawPosition {
+  /** 当前小节内进度 0..1（heading → 下一个 level<= 的 heading 之间；scrollToPosition 的 fraction） */
+  sectionFraction: number;
+}
+
 export interface PaperReaderProps {
+  /** 论文 id（活位置注册表键 / 位置落库；= books/{paperId}/paper.md 的目录名） */
+  paperId: string;
   /** 论文目录绝对路径（图片相对路径基于它解析） */
   paperDir: string;
   /** paper.md 原始文本（组件内部自行解析 frontmatter） */
   markdown: string;
-  /** 当前阅读位置对应的标题变化时上报（IntersectionObserver 跟踪，供论文助手注入"当前小节"） */
+  /** 当前阅读位置对应的标题变化时上报（IntersectionObserver 跟踪，顶栏/TOC/笔记位置用） */
   onActiveHeadingChange?: (heading: { id: string; text: string } | null) => void;
+  /** 精确阅读位置变化时上报（charOffset 变化 > 200 字符或标题变化才触发；论文助手落库/恢复用） */
+  onPositionChange?: (position: PaperPositionReport) => void;
   /** 正文渲染后收集到的 TOC 上报（供顶栏 TOC 下拉使用） */
   onTocChange?: (toc: TocItem[]) => void;
   /** 正文字号（px，作用于 prose 容器，内部 em 相对单位跟随） */
@@ -791,9 +806,11 @@ function MetadataBlock({
 
 const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function PaperReader(
   {
+    paperId,
     paperDir,
     markdown,
     onActiveHeadingChange,
+    onPositionChange,
     onTocChange,
     fontSize,
     fontFamily,
@@ -822,11 +839,20 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
   // 先做孤儿脚注定义兜底（未被引用的 [^N]: 定义 GFM 会静默丢弃，抽成普通段落挪到文末）
   const renderedBody = useMemo(() => renderMathInRawTables(hoistOrphanFootnoteDefs(body)), [body]);
   const hasMetadata = Object.keys(metadata).length > 0;
+  // 精确位置坐标系：parsePaperSections 的 body（去 frontmatter、行尾统一为 \n）。
+  // 字符偏移一律以它为准——不能反推原文长度（parsePaperMarkdown 的 body 经过 normalizeDisplayMath，长度会变）。
+  const parsedSections = useMemo(() => parsePaperSections(markdown), [markdown]);
+  const parsedHeadingById = useMemo(
+    () => new Map(parsedSections.headings.map((heading) => [heading.id, heading])),
+    [parsedSections],
+  );
 
   const [toc, setToc] = useState<TocItem[]>([]);
   const [, setActiveHeadingId] = useState<string>("");
   // 位置式标题追踪的去重镜像（compute/scrollToHeading 双写，避免重复上报）
   const activeHeadingIdRef = useRef("");
+  // 精确位置上报去重镜像：charOffset 变化 > 200 字符 / 标题变化 / 正文长度变化才写活位置并上抛
+  const lastPositionReportRef = useRef<{ headingId: string; charOffset: number; docLength: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -848,6 +874,42 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
   useEffect(() => {
     onAnnotationFocusedRef.current = onAnnotationFocused;
   }, [onAnnotationFocused]);
+  const onPositionChangeRef = useRef(onPositionChange);
+  useEffect(() => {
+    onPositionChangeRef.current = onPositionChange;
+  }, [onPositionChange]);
+
+  /**
+   * heading 与其"下一个同级/更高级 heading"的滚动坐标（相对滚动容器顶 + scrollTop）。
+   * 位置采集（阅读线在小节内的比例）与位置恢复（按比例回跳）共用同一几何口径。
+   * 末节没有下一个 heading 时用正文容器底部（= 正文末尾）作为小节终点。
+   */
+  const getSectionBounds = useCallback((headingEl: Element): { headingTop: number; nextTop: number } | null => {
+    const container = contentRef.current;
+    const root = scrollRef.current;
+    if (!container || !root) return null;
+    const level = Number(headingEl.tagName.slice(1));
+    if (!Number.isFinite(level) || level < 1 || level > 6) return null;
+    // 正文标题（排除脚注区 sr-only 标题，与 TOC/scroll spy 同口径）
+    const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).filter(
+      (el) => !el.closest("[data-footnotes]"),
+    );
+    const index = headings.indexOf(headingEl);
+    if (index === -1) return null;
+    let nextEl: Element | null = null;
+    for (let i = index + 1; i < headings.length; i += 1) {
+      if (Number(headings[i].tagName.slice(1)) <= level) {
+        nextEl = headings[i];
+        break;
+      }
+    }
+    const rootTop = root.getBoundingClientRect().top;
+    const headingTop = headingEl.getBoundingClientRect().top - rootTop + root.scrollTop;
+    const nextTop = nextEl
+      ? nextEl.getBoundingClientRect().top - rootTop + root.scrollTop
+      : container.getBoundingClientRect().bottom - rootTop + root.scrollTop;
+    return { headingTop, nextTop };
+  }, []);
 
   // ─── 标注（CSS Custom Highlight API，与本文内搜索同方案；锚点格式见 paper-anchors.ts） ───
   /** 中文划词标亮的载荷：tgt 选区经句对齐映射出的英文锚点（原文永远唯一事实源，text/context 均英文） */
@@ -1123,15 +1185,85 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
     onTocChangeRef.current?.(items);
   }, [body]);
 
-  // 当前阅读位置标题追踪（双保险，2026-08-23 二次加固）：
+  // 切换论文：重置位置去重镜像，保证新论文的初始位置必上报（heading id 常跨论文重名）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: paperId 是刻意的重置触发依赖
+  useEffect(() => {
+    lastPositionReportRef.current = null;
+  }, [paperId]);
+
+  // 当前阅读位置标题追踪 + 精确位置采集（双保险，2026-08-23 二次加固；2026-10-20 位置桥扩展）：
   // 主通道＝位置式（滚动事件 → rAF 计算“视口上 25% 带内最后一个标题”），覆盖跳转落点；
   // 辅通道＝IntersectionObserver（标题穿越检测带即触发），覆盖滚动事件丢失/监听失效的场景。
   // 两路共用同一去重 ref，谁先算出新值谁上报。deps 含 viewMode/translationMap（正文重建后
   // 内容 DOM 换新，必须重挂监听——仅依赖 toc 在视图切换但 body 未变时会漏）。
+  // 位置桥：每次上报同时把"阅读线在小节内的几何比例"换算成正文字符偏移（坐标系 = parsedSections.body），
+  // 写入活位置注册表（提示词注入/工具用）并上抛父组件（落库/恢复用）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: viewMode/translation 是刻意的重挂监听依赖（正文 DOM 换新），effect 内不直接读取
   useEffect(() => {
     const container = contentRef.current;
     const scrollRoot = scrollRef.current;
     if (!container || !scrollRoot || toc.length === 0) return;
+
+    // DOM 标题 → parsePaperSections 的 heading：优先 id（rehype-slug 与本地 slug 同源），
+    // 兜底按纯文本匹配（slug 漂移时仍能落到大致小节）
+    const findParsedHeading = (el: Element): PaperSectionHeading | undefined => {
+      if (el.id) {
+        const byId = parsedHeadingById.get(el.id);
+        if (byId) return byId;
+      }
+      const text = (el.textContent ?? "").trim();
+      return text ? findSectionHeading(parsedSections, text) : undefined;
+    };
+
+    /** 精确位置：小节内几何比例 → 正文字符偏移（坐标系 = parsedSections.body，勿反推原文长度） */
+    const computePosition = (el: Element, heading: PaperSectionHeading): PaperPositionReport | null => {
+      const bodyText = parsedSections.body;
+      const index = parsedSections.headings.indexOf(heading);
+      if (index === -1) return null;
+      // 小节终点 = 下一个同级/更高级 heading 的起始偏移；没有则到正文末尾
+      const nextHeading = parsedSections.headings.slice(index + 1).find((h) => h.level <= heading.level);
+      const sectionEnd = nextHeading ? nextHeading.start : bodyText.length;
+      const bounds = getSectionBounds(el);
+      if (!bounds) return null;
+      // 阅读线 = 滚动容器顶部下方 25% 视口高度（与标题追踪主通道同一基准），换算到滚动内容坐标
+      const readingLine = scrollRoot.scrollTop + scrollRoot.clientHeight * 0.25;
+      const fraction = Math.min(
+        1,
+        Math.max(0, (readingLine - bounds.headingTop) / Math.max(1, bounds.nextTop - bounds.headingTop)),
+      );
+      const sectionSpan = Math.max(0, sectionEnd - heading.contentStart);
+      const charOffset = Math.min(
+        bodyText.length,
+        Math.max(0, Math.round(heading.contentStart + fraction * sectionSpan)),
+      );
+      return {
+        scope: "paper",
+        paperId,
+        headingId: el.id || heading.id,
+        headingText: heading.text,
+        headingLevel: heading.level,
+        charOffset,
+        docLength: bodyText.length,
+        docFraction: bodyText.length > 0 ? charOffset / bodyText.length : 0,
+        // 目录可用性：解析到 heading 即视为有目录（正文标题缺失时才 fallback）
+        tocAvailable: parsedSections.headings.length > 0,
+        sectionFraction: fraction,
+      };
+    };
+
+    /** 位置上报去重：charOffset 变化 > 200 字符 / 标题变化 / 正文长度变化才写注册表并上抛 */
+    const reportPosition = (position: PaperPositionReport) => {
+      const prev = lastPositionReportRef.current;
+      const changed =
+        !prev ||
+        prev.headingId !== position.headingId ||
+        prev.docLength !== position.docLength ||
+        Math.abs(prev.charOffset - position.charOffset) > 200;
+      if (!changed) return;
+      lastPositionReportRef.current = position;
+      setLiveReadingPosition(position);
+      onPositionChangeRef.current?.(position);
+    };
 
     const computeFromPosition = () => {
       const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).filter(
@@ -1151,10 +1283,18 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
       return active ?? headings.find((h) => h.id) ?? headings[0];
     };
     const report = (el: Element) => {
-      if (!el.id || el.id === activeHeadingIdRef.current) return;
-      activeHeadingIdRef.current = el.id;
-      setActiveHeadingId(el.id);
-      onActiveHeadingChangeRef.current?.({ id: el.id, text: el.textContent ?? "" });
+      if (!el.id) return;
+      // 标题变化上报（原有语义：去重后通知顶栏/TOC 高亮/笔记位置）
+      if (el.id !== activeHeadingIdRef.current) {
+        activeHeadingIdRef.current = el.id;
+        setActiveHeadingId(el.id);
+        onActiveHeadingChangeRef.current?.({ id: el.id, text: el.textContent ?? "" });
+      }
+      // 精确位置：每次滚动都算，内部按 charOffset 阈值去重
+      const heading = findParsedHeading(el);
+      if (!heading) return;
+      const position = computePosition(el, heading);
+      if (position) reportPosition(position);
     };
 
     let rafId = 0;
@@ -1189,7 +1329,7 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
       if (rafId) cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [toc, viewMode, translation]);
+  }, [toc, viewMode, translation, parsedSections, parsedHeadingById, paperId, getSectionBounds]);
 
   // P2 标签页休眠还原：重挂载后首次 effect 即恢复记忆位置并清除（一次性消费，
   // 不影响后续 viewMode/译文切换；markdown 首帧与 effect 同周期提交，内容已就位）
@@ -1321,6 +1461,31 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
       return true;
     },
     [recordJump],
+  );
+
+  // 恢复精确阅读位置（打开论文时按落库的 heading + 小节内比例回跳）：
+  // 只做瞬时滚定（behavior=auto，不纳入"返回上处"栈），落点由下次滚动采集自行校正。
+  const scrollToPosition = useCallback(
+    (headingId: string, fraction: number): boolean => {
+      const container = contentRef.current;
+      const root = scrollRef.current;
+      if (!container || !root || !headingId) return false;
+      // 多 tab 并存时同 id 元素在其他 tab 的 DOM 里也存在，必须按本容器取
+      const el = container.querySelector(`[id="${CSS.escape(headingId)}"]`);
+      if (!el) return false;
+      const bounds = getSectionBounds(el);
+      if (!bounds) return false;
+      const clampedFraction = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
+      // 采集口径是"滚动容器顶部下方 25% 视口的阅读线落在小节内 fraction 处"；
+      // 恢复必须做严格逆运算（减去 0.25*clientHeight），否则每次恢复都会引入一次系统性偏移。
+      const targetTop =
+        bounds.headingTop +
+        clampedFraction * Math.max(0, bounds.nextTop - bounds.headingTop) -
+        root.clientHeight * 0.25;
+      root.scrollTo({ top: Math.max(0, targetTop), behavior: "auto" });
+      return true;
+    },
+    [getSectionBounds],
   );
 
   // 定位闪烁强调（标注定位 / 图表速跳共用）：paper-anno-current 高亮闪 3 次后清除
@@ -1488,8 +1653,9 @@ const PaperReader = forwardRef<PaperReaderHandle, PaperReaderProps>(function Pap
     return quotes.map((quote) => locateQuoteInPaper(container, quote));
   }, []);
 
-  useImperativeHandle(ref, () => ({ scrollToHeading, locateQuotes, scrollToQuote, scrollToImage }), [
+  useImperativeHandle(ref, () => ({ scrollToHeading, scrollToPosition, locateQuotes, scrollToQuote, scrollToImage }), [
     scrollToHeading,
+    scrollToPosition,
     locateQuotes,
     scrollToQuote,
     scrollToImage,

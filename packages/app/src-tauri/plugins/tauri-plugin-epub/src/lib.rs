@@ -20,6 +20,9 @@ mod database;
 // Core modules
 mod pipeline;
 
+// 阅读位置桥（foliate 位置 ↔ mdbook 文本坐标：resolve/read 命令）
+mod position;
+
 // 内置使用手册（编译期嵌入的 Markdown 资源与索引元信息）
 mod manual;
 mod wiki;
@@ -49,6 +52,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::search_papers_db,
             commands::get_paper_chunk_context,
             commands::tokenize_zh,
+            position::resolve_reading_position,
+            position::resolve_paper_position,
+            position::read_position_window,
         ])
         .setup(|app, _api| {
             // Initialize and manage plugin state

@@ -8,6 +8,7 @@ import { getBookDirFromLanguage, getBookDirFromWritingMode } from "@/utils/book"
 import { mountAdditionalFonts } from "@/utils/font";
 import { manageSyntaxHighlighting } from "@/utils/highlightjs";
 import { isCJKLang } from "@/utils/lang";
+import { isMobile } from "@/utils/mobile";
 import { getDirFromUILanguage } from "@/utils/rtl";
 import { applyFixedlayoutStyles, applyImageStyle, applyTranslationStyle, transformStylesheet } from "@/utils/style";
 import {
@@ -21,7 +22,6 @@ import {
   handleMouseup,
   handleWheel,
 } from "../../utils/iframeEventHandlers";
-import { isMobile } from "@/utils/mobile";
 import { EventManager } from "./event-manager";
 import { type LayoutDimensions, StyleManager } from "./style-manager";
 
@@ -37,10 +37,19 @@ export interface FoliateViewerManagerConfig {
 
 export interface ProgressData {
   location: string;
+  /** 当前 spine 序号（0-based，foliate relocate 的 section index） */
+  sectionIndex: number;
   sectionHref: string;
+  /** 当前 TOC 项原始 href（含 #fragment；目录侧栏高亮/自动展开用，目录缺失时为空串） */
+  tocHref: string;
   sectionLabel: string;
   sectionId: number;
-  section: number;
+  /** foliate SectionProgress 的 section 区间（目录缺失时也可用） */
+  section: { current: number; total: number };
+  /** 当前章内进度 0..1（foliate relocate 的 fraction） */
+  sectionFraction: number;
+  /** 书籍 spine 总数 */
+  spineTotal: number;
   pageinfo: any;
   timeinfo: any;
   range: any;
@@ -244,10 +253,18 @@ export class FoliateViewerManager {
     this.onProgressUpdate?.(
       {
         location: detail.cfi,
-        sectionHref: detail.tocItem?.href || "",
+        sectionIndex: detail.sectionIndex ?? detail.section?.current ?? 0,
+        // 优先用 relocate 扩展的 spine 资源路径（book.sections[i].id，zip 相对路径），
+        // 目录缺失时 tocItem 为 undefined，回落 TOC href 保持旧行为
+        sectionHref: detail.sectionHref || detail.tocItem?.href || "",
+        // TOC 原始 href（含 fragment）单独透传：sectionHref 改指 spine 资源路径后，
+        // 目录侧栏的精确高亮/自动展开仍按 TOC 项 href 匹配
+        tocHref: detail.tocItem?.href || "",
         sectionLabel: detail.tocItem?.label || "",
         sectionId: detail.tocItem?.id ?? 0,
-        section: detail.section,
+        section: detail.section ?? { current: 0, total: 0 },
+        sectionFraction: detail.sectionFraction ?? 0,
+        spineTotal: detail.spineTotal ?? this.view?.book?.sections?.length ?? 0,
         pageinfo: detail.location,
         timeinfo: detail.time,
         range: detail.range,

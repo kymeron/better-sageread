@@ -1,3 +1,4 @@
+import { useLibraryStore } from "@/store/library-store";
 /**
  * 工具注册框架：按 Agent 角色（central / reader / paper）动态组装工具集。
  *
@@ -8,7 +9,6 @@
  *   与本函数返回值合并（见 src/ai/mcp/mcp-manager.ts），不在此同步组装
  */
 import { useLlamaStore } from "@/store/llama-store";
-import { useLibraryStore } from "@/store/library-store";
 import type { Tool } from "ai";
 import {
   askAppHelpTool,
@@ -66,6 +66,7 @@ import {
 } from "./index";
 import { createManageNotesTool } from "./manage-notes";
 import { createReadThreadTool } from "./read-thread";
+import { createGetReadingPositionTool, createReadAtReadingPositionTool } from "./reading-position";
 
 // ==================== 类型定义 ====================
 
@@ -383,8 +384,8 @@ export function getToolsForScope(agentScope: AgentScope, context?: ToolContext):
   if (agentScope === "reader" && context?.bookId) {
     const hasVectorCapability = useLlamaStore.getState().hasVectorCapability();
     const bookIndexed =
-      useLibraryStore.getState().booksWithStatus.find((b) => b.id === context.bookId)?.status?.metadata
-        ?.vectorization?.status === "success";
+      useLibraryStore.getState().booksWithStatus.find((b) => b.id === context.bookId)?.status?.metadata?.vectorization
+        ?.status === "success";
     if (hasVectorCapability && bookIndexed) {
       tools.ragSearch = createRagSearchTool(context.bookId) as Tool;
       tools.ragToc = createRagTocTool(context.bookId) as Tool;
@@ -392,6 +393,9 @@ export function getToolsForScope(agentScope: AgentScope, context?: ToolContext):
       tools.ragRange = createRagRangeTool(context.bookId) as Tool;
     }
     tools.readBookSection = createReadBookSectionTool(context.bookId) as Tool;
+    // 阅读位置桥（常驻；不依赖向量能力——无索引时按位置读 mdbook 原文仍可用）
+    tools.getReadingPosition = createGetReadingPositionTool("reader", context.bookId) as Tool;
+    tools.readAtReadingPosition = createReadAtReadingPositionTool("reader", context.bookId) as Tool;
     // 笔记面板（绑定当前书；create/update 由 tool-guard 弹确认卡）
     tools.manageNotes = createManageNotesTool(context.bookId) as Tool;
   }
@@ -400,6 +404,9 @@ export function getToolsForScope(agentScope: AgentScope, context?: ToolContext):
   if (agentScope === "paper" && context?.paperId) {
     tools.getPaperToc = createPaperTocTool(context.paperId) as Tool;
     tools.readPaperSection = createPaperSectionTool(context.paperId) as Tool;
+    // 阅读位置桥（常驻；按 paper.md 坐标取当前位置原文，不依赖向量能力）
+    tools.getReadingPosition = createGetReadingPositionTool("paper", context.paperId) as Tool;
+    tools.readAtReadingPosition = createReadAtReadingPositionTool("paper", context.paperId) as Tool;
     tools.readPaperFull = createPaperFullTool(context.paperId) as Tool;
     tools.getPaperInfo = createPaperInfoTool(context.paperId) as Tool;
     tools.getCitations = createGetCitationsTool(context.paperId) as Tool;
@@ -449,6 +456,8 @@ export function getToolDescriptions(agentScope: AgentScope): string[] {
       "- getPaperInfo: 获取当前论文元数据",
       "- getCitations: 提取当前论文的参考文献列表",
       "- getFigures: 提取当前论文的图片清单（图注与所在小节）",
+      "- getReadingPosition: 获取用户当前阅读位置（精确坐标：paper.md 字符偏移 + 估算分块区间 + 进度）",
+      "- readAtReadingPosition: 按当前位置读取 paper.md 原文窗口（可 before/after 扩窗、next_offset 续读）",
       "- manageNotes: 笔记面板管理（列出/读取/新建/修改/星标/导出当前论文的笔记）",
     );
     if (useLlamaStore.getState().hasVectorCapability()) {

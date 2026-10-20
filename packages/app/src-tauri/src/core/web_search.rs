@@ -1,6 +1,6 @@
 //! AI 对话网络搜索：支持多种搜索 Provider。
 //! - 内置引擎（免配置）：Bing → 百度 → DuckDuckGo（HTML 爬取，不稳定但零门槛）
-//! - API Provider（用户配置 Key）：Tavily / Serper / SearXNG（稳定、高质量）
+//! - API Provider（用户配置 Key）：Tavily / Serper / SearXNG / DeepSeek（稳定、高质量）
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -459,6 +459,48 @@ struct ZhipuSearchResult {
     content: Option<String>,
 }
 
+/// DeepSeek 官方搜索 API 响应（仅解析所需字段，rerank_score/site_name/date/authority 等由 serde 忽略）
+#[derive(Deserialize)]
+struct DeepseekSearchResponse {
+    /// 缺失或为 null 时视为空结果
+    results: Option<Vec<DeepseekSearchResult>>,
+}
+
+#[derive(Deserialize)]
+struct DeepseekSearchResult {
+    title: String,
+    url: String,
+    /// 600-800 字符的详细摘要
+    summary: Option<String>,
+    /// 100-200 字符的短摘要（summary 为空时回落）
+    snippet: Option<String>,
+}
+
+/// DeepSeek query 长度限制 1..=128 字符（官方规格），超长按字符截断，避免整次搜索失败
+fn clamp_deepseek_query(query: &str) -> String {
+    query.chars().take(128).collect()
+}
+
+/// DeepSeek 结果映射：snippet 优先取 summary（更长、给模型读更值），为空时回落 snippet
+fn map_deepseek_results(results: Vec<DeepseekSearchResult>) -> Vec<WebSearchResult> {
+    results
+        .into_iter()
+        .map(|r| {
+            let summary = r.summary.unwrap_or_default();
+            let snippet = if summary.trim().is_empty() {
+                r.snippet.unwrap_or_default()
+            } else {
+                summary
+            };
+            WebSearchResult {
+                title: r.title,
+                url: r.url,
+                snippet: snippet.trim().to_string(),
+            }
+        })
+        .collect()
+}
+
 // ─── API Provider 搜索实现 ───────────────────────────────────────────────────
 
 /// Tavily 搜索（专为 AI Agent 优化的搜索 API）
@@ -673,11 +715,46 @@ async fn search_zhipu(query: &str, max: usize, api_key: &str) -> Result<Vec<WebS
     Ok(results)
 }
 
+/// DeepSeek 官方搜索（api.deepseek.com/v1/tools/search，2026-10 上线）
+async fn search_deepseek(query: &str, max: usize, api_key: &str) -> Result<Vec<WebSearchResult>, String> {
+    let client = crate::core::proxy::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    // 不传 need_content（默认 false）：summary/snippet 已足够给模型读，不请求正文
+    let body = serde_json::json!({
+        "query": clamp_deepseek_query(query),
+        "count": max,
+    });
+
+    let resp = client
+        .post("https://api.deepseek.com/v1/tools/search")
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("DeepSeek 请求失败: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("DeepSeek 搜索失败 (HTTP {status}): {text}"));
+    }
+
+    let data: DeepseekSearchResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 DeepSeek 响应失败: {e}"))?;
+    Ok(map_deepseek_results(data.results.unwrap_or_default()))
+}
+
 // ─── Tauri Command ───────────────────────────────────────────────────────────
 
 /// 网络搜索 Tauri command（批次 A：API Key 由 Rust 侧自 keyring 取，不经前端）
 ///
-/// provider："builtin" | "bocha" | "zhipu" | "tavily" | "serper" | "searxng"
+/// provider："builtin" | "bocha" | "zhipu" | "deepseek" | "tavily" | "serper" | "searxng"
 /// engine：仅 builtin 模式下有效，"auto" | "bing" | "baidu" | "duckduckgo"
 #[tauri::command]
 pub async fn web_search(
@@ -727,6 +804,15 @@ pub async fn web_search(
                 return Err("Serper 未返回搜索结果".to_string());
             }
             log::info!("[网络搜索] Serper 返回 {} 条结果", results.len());
+            return Ok(results);
+        }
+        "deepseek" => {
+            let key = provider_key(&app, "deepseek", "DeepSeek")?;
+            let results = search_deepseek(&query, max, &key).await?;
+            if results.is_empty() {
+                return Err("DeepSeek 未返回搜索结果".to_string());
+            }
+            log::info!("[网络搜索] DeepSeek 返回 {} 条结果", results.len());
             return Ok(results);
         }
         "searxng" => {
@@ -848,5 +934,44 @@ mod tests {
         assert_eq!(results[0].title, "Rust Lang");
         assert_eq!(results[0].url, "https://example.com");
         assert_eq!(results[0].snippet, "A systems language & more");
+    }
+
+    #[test]
+    fn test_clamp_deepseek_query() {
+        assert_eq!(clamp_deepseek_query("Rust 搜索"), "Rust 搜索");
+        let long = "a".repeat(200);
+        assert_eq!(clamp_deepseek_query(&long).chars().count(), 128);
+    }
+
+    #[test]
+    fn test_map_deepseek_results() {
+        let results = map_deepseek_results(vec![
+            DeepseekSearchResult {
+                title: "结果一".to_string(),
+                url: "https://a.com/1".to_string(),
+                summary: Some("  较长的摘要  ".to_string()),
+                snippet: Some("短摘要".to_string()),
+            },
+            DeepseekSearchResult {
+                title: "结果二".to_string(),
+                url: "https://a.com/2".to_string(),
+                summary: Some("   ".to_string()),
+                snippet: Some("回落摘要".to_string()),
+            },
+            DeepseekSearchResult {
+                title: "结果三".to_string(),
+                url: "https://a.com/3".to_string(),
+                summary: None,
+                snippet: None,
+            },
+        ]);
+        assert_eq!(results.len(), 3);
+        // summary 非空时优先（且去掉首尾空白）
+        assert_eq!(results[0].snippet, "较长的摘要");
+        // summary 为空白时回落 snippet
+        assert_eq!(results[1].snippet, "回落摘要");
+        // 两者都为空时给空串
+        assert_eq!(results[2].snippet, "");
+        assert_eq!(results[0].url, "https://a.com/1");
     }
 }

@@ -36,6 +36,7 @@
 3. **同步打包副本**：`cp site/maps/*.json packages/app/src/ai/providers/maps/`。
 4. **同步 Books_Converter 移植**：`F:\MyProjects\Books_Converter\gui\src\lib\vision-map.ts`
    按它的分节与注释惯例加行（注释写明核实日期与出处），并更新头注日期。
+   （SageRead 当前配套 BC 1.3.9；BC 新版大版本升级/搬进 SageRead 是另一条独立计划，暂缓，不影响模型表移植这条路。）
    BC 的思考映射（`vlm_client.py`）是端点级启发式且只覆盖 deepseek/GLM/ dashscope/
    豆包四家端点——SageRead 侧新型号若属于这四家端点才需要同步，否则不动。
    BC 仓库规则：改完跑 `gui` 的 `tsc --noEmit` + `vitest run`；**不在该仓库 commit**。
@@ -60,6 +61,14 @@
   Astra 无 none（恒思考，alwaysOn）。
 - **MiMo**：官方端点 `api.xiaomimimo.com`，思考参数文档口径 `thinking:{type:
   enabled|disabled}`（勿用阿里托管的 `enable_thinking` 口径）。
+- **恒思考新型号（alwaysOn）加行前先确认"有没有下发通道"**：原生 providerOptions
+  （openai/google/openrouter/grok）或通道 B host 分派，至少有一条能到；否则行 = 死档位。
+  2026-10-20 MiniMax 就是先补 host 分派再加入表（与 hunyuan/doubao/mimo 同款教训）。
+- **alwaysOn 行的 off/none 控制词钳制**（2026-10-20 修复）：`clampReasoningLevel` 对
+  off/none/on/auto 控制词原样放行（供非 alwaysOn 分支做开关映射），但恒思考型号不接受
+  控制词。现在 `chatReasoningProviderOptions` / `chatReasoningBodyPatch` 在钳制后统一把
+  alwaysOn 行的 off/none 落到 `levels[0]`（与 `auxThinkingLevel` 同口径），避免换型号后
+  persist 的 off 直接下发 400。
 - **日期快照归一**：`-YYYY-MM-DD`/`-YYYYMMDD`/`-DDMMYY` 六位数后缀会被剥离后查表，
   快照型号一般不用单独加行（冒烟里有覆盖）。
 - **空表/非法形状会被客户端拒绝**（防部署事故擦空）；同版/更旧表不采纳（不抖动）。
@@ -68,6 +77,25 @@
 
 ## 4. 已知挂账
 
+- 2026-10-20 批次核实结论（均已入表，site/maps + 打包副本 + BC 视觉移植三处同步，maps-sync-check 绿）：
+  - **Gemini 4 Argon（`gemini-4-argon`）已入表**：Google 官方发布页（blog.google）/Gemini API
+    "What's new in Gemini 4 Argon"/Gemini Interactions SDK 2.1.0 发布说明核实。要点：
+    1,048,576 统一上下文；视觉多模态（Roboflow Vision Evals #1、SDK 标注 multimodal）；
+    **恒思考不可关**（none 映射为 low 且隐藏思考）；原生 thinkingLevel 仅 `low/medium/high`
+    （默认 medium），**拒绝 minimal**、拒绝 thinkingBudget 与 level 并用。走 google 通道
+    providerOptions `thinkingConfig.thinkingLevel`，**无需改分派代码**。
+    **未接 long decode**：官方对 `xhigh/max` 档才放开 >64K 输出（升 maxOutputTokens），
+    本客户端表内最高 high；如需支持要改客户端分派，随发布版走。
+  - **MiniMax M3.1 Flash（API id `MiniMax-M3.1-Flash`，表键 `minimax-m3.1-flash`）已入表**：
+    官方 blog（2026-10-19，匿名代号 **Space Bunny** 为其早期版本）+ platform.minimax.io 文档核实。
+    要点：1M 上下文；多模态（text/image/video 输入）；**恒思考不可关**
+    （`thinking:{type:"disabled"}` 或 `reasoning_effort:"none"` 直接 400）；
+    思考深度走 `reasoning_effort`：low/medium/high/xhigh/max（省略默认 max）。
+    **同时补了 MiniMax 请求体分派分支**（`api.minimax.io` / `api.minimaxi.com` /
+    `api.minimax.chat`）：此前表里 minimax-m3/m2.5/h3 三行是死条目（无 host 分派）；
+    新分支对 alwaysOn 行发 `reasoning_effort`，存量 switch 行保持 `thinking:{type}` 口径不变。
+  - 反向断言已加：两模型视觉放行（含 OpenRouter 作者前缀归一）、Gemini 三档/恒思考、
+    MiniMax 五档/off 钳到 low 且不发 disabled；存量 minimax-m3 switch 行为不变。
 - 2026-10-14 批次核实结论：
   - **gpt-6.1-sol 已入表**（恒思考五档 low/medium/high/xhigh/max，none/minimal 不支持）：
     OpenAI reasoning 指南（默认 medium）+ DataCamp 引官方型号页（none/minimal 明确不支持）。

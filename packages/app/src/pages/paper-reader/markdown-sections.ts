@@ -46,7 +46,7 @@ const FENCE_RE = /^(```|~~~)/;
 
 /**
  * 解析 paper.md：去掉 frontmatter，提取 ATX heading 列表（跳过围栏代码块内的 # 行）。
- * 工具（getPaperToc/readPaperSection）与"当前阅读小节"注入共用。
+ * 工具（getPaperToc/readPaperSection）与论文阅读位置采集（paper-reader 精确位置/恢复）共用。
  */
 export function parsePaperSections(markdown: string): ParsedPaperSections {
   const { body: rawBody } = parsePaperMarkdown(markdown);

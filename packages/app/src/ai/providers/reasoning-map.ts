@@ -8,7 +8,7 @@
  * 两个下发通道按 provider 分派（与型号能力表正交）：
  * A. providerOptions（AI SDK 原生）：openai / google / openrouter / grok
  * B. 请求体补丁（自定义端点）：deepseek / GLM(bigmodel) / Qwen(dashscope) / Kimi(moonshot)
- *    / 混元(tencentmaas) / 豆包(volces) / MiMo
+ *    / 混元(tencentmaas) / 豆包(volces) / MiMo / MiniMax
  *
  * 维护：新型号上线 → 查官方文档 → JSON 表加一行 → UI 自动适配。
  *
@@ -125,11 +125,14 @@ export function chatReasoningProviderOptions(
   if (!cap) return undefined;
   // 存量档位钳制（审计 P2-5）：persist 值不在型号原生档位内时钳到最近合法档，防直接下发 400
   const lv = clampReasoningLevel(cap.levels, level);
+  // 恒思考型号不接受控制词：off/none 落到最低原生档（与 auxThinkingLevel 同口径）。
+  // 2026-10-20：Gemini 4 Argon / MiniMax M3.1 Flash 等 alwaysOn 行若把 off/none 原样下发必 400。
+  const effectiveLevel = cap.alwaysOn && (lv === "off" || lv === "none") && cap.levels.length > 0 ? cap.levels[0] : lv;
 
   switch (providerId) {
     case "openai": {
       if (cap.transport === "effort") {
-        return { openai: { reasoningEffort: lv } };
+        return { openai: { reasoningEffort: effectiveLevel } };
       }
       return undefined;
     }
@@ -138,12 +141,20 @@ export function chatReasoningProviderOptions(
       if (cap.transport === "budget") {
         // 数字档（滑块，UI 存数字字符串）直接下发（审计 P2-2：此前只认预设词，
         // 用户拖到 4096 等值全部落空成 -1 动态预算）；预设词走映射；off=0、high=-1 动态
-        const n = Number.parseInt(lv, 10);
-        const budget = Number.isFinite(n) ? n : lv === "off" ? 0 : lv === "low" ? 1024 : lv === "medium" ? 8192 : -1;
+        const n = Number.parseInt(effectiveLevel, 10);
+        const budget = Number.isFinite(n)
+          ? n
+          : effectiveLevel === "off"
+            ? 0
+            : effectiveLevel === "low"
+              ? 1024
+              : effectiveLevel === "medium"
+                ? 8192
+                : -1;
         return { google: { thinkingConfig: { thinkingBudget: budget } } };
       }
       if (cap.transport === "effort") {
-        return { google: { thinkingConfig: { thinkingLevel: lv } } };
+        return { google: { thinkingConfig: { thinkingLevel: effectiveLevel } } };
       }
       return undefined;
     }
@@ -151,13 +162,13 @@ export function chatReasoningProviderOptions(
       // 按 transport 分派（审计 P2-4：此前一律 effort 直传，switch 的 "on" 与 budget 的
       // 数字串会被当成 effort 非法值下发）
       if (cap.transport === "effort") {
-        return { openrouter: { reasoning: { effort: lv === "off" ? "low" : lv } } };
+        return { openrouter: { reasoning: { effort: effectiveLevel === "off" ? "low" : effectiveLevel } } };
       }
       if (cap.transport === "switch") {
-        return { openrouter: { reasoning: { enabled: lv !== "off" && lv !== "none" } } };
+        return { openrouter: { reasoning: { enabled: effectiveLevel !== "off" && effectiveLevel !== "none" } } };
       }
       if (cap.transport === "budget") {
-        const n = Number.parseInt(lv, 10);
+        const n = Number.parseInt(effectiveLevel, 10);
         if (Number.isFinite(n)) return { openrouter: { reasoning: { max_tokens: n } } };
         return undefined; // 预设词无法映射 max_tokens，不下发
       }
@@ -165,7 +176,7 @@ export function chatReasoningProviderOptions(
     }
     case "grok": {
       if (cap.transport === "effort") {
-        return { openai: { reasoningEffort: lv } };
+        return { openai: { reasoningEffort: effectiveLevel } };
       }
       return undefined;
     }
@@ -195,6 +206,10 @@ export function chatReasoningBodyPatch(
   // 存量档位钳制（审计 P2-5）：deepseek 等无 medium 档型号上 persist 的 "medium" 必 400；
   // 控制词（off/none/on）与数字串（budget 滑块）由 clamp 内部放行
   level = cap ? (clampReasoningLevel(cap.levels, level) as ReasoningLevel) : level;
+  // 恒思考型号不接受控制词：off/none 落到最低原生档（Gemini 4 Argon / MiniMax M3.1 Flash 等）
+  if (cap?.alwaysOn && (level === "off" || level === "none") && cap.levels.length > 0) {
+    level = cap.levels[0];
+  }
 
   // DeepSeek
   if (providerId === "deepseek") {
@@ -315,6 +330,31 @@ export function chatReasoningBodyPatch(
   // 默认开启（V2.6 全系/V2.5 同口径）。旧 host 检查 mimo.mi.com 不匹配官方端点 api.xiaomimimo.com，
   // 补上前表里的 mimo 行是死条目（与混元/豆包同款缺口，2026-09-22 随 V2.6 入表修复）。
   // 数字档保留 enable_thinking+thinking_budget，兼容存量 budget 行（v2.5 系）。
+  // MiniMax（api.minimax.io / api.minimaxi.com / api.minimax.chat）——2026-10-20 补分派：
+  // 补此分支前表里的 minimax 行是死条目（与 stepfun/mistral 同款缺口）。
+  // M3.1-Flash 恒思考：thinking:{type:"disabled"} 或 reasoning_effort:"none" 直接 400，
+  // 思考深度走 reasoning_effort（low/medium/high/xhigh/max，省略默认 max）；
+  // 存量 M3/M2.5/H3 行为 switch 型（thinking:{type}），保持原口径。
+  if (host.includes("minimax")) {
+    if (!cap) return null;
+    if (cap.alwaysOn) {
+      if (cap.levels.length === 0) return null;
+      return (body) => {
+        body.reasoning_effort = level;
+      };
+    }
+    if (level === "off" || level === "none") {
+      return (body) => {
+        body.thinking = { type: "disabled" };
+      };
+    }
+    if (level === "on") {
+      return (body) => {
+        body.thinking = { type: "enabled" };
+      };
+    }
+    return null;
+  }
   if (host.includes("xiaomimimo.com") || host.includes("mimo.mi.com") || host.includes("mimo.xiaomi")) {
     const budget = Number.parseInt(level, 10);
     if (budget === 0 || level === "off" || level === "none") {

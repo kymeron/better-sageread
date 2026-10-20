@@ -23,12 +23,14 @@ const remoteReasoning = await (
 ).json();
 
 // 抽查行（每批新型号入表后在此追加；视觉值须为 true，思考给出期望 levels）
-const VISION_SPOT = ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed", "claude-opus-5-5", "gpt-6-sol", "gpt-6-luna", "grok-4.7"];
+const VISION_SPOT = ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed", "claude-opus-5-5", "gpt-6-sol", "gpt-6-luna", "grok-4.7", "gemini-4-argon", "minimax-m3.1-flash"];
 const REASONING_SPOT = {
   "mimo-v2.6-pro": ["off", "on"],
   "gpt-6-sol": ["none", "low", "medium", "high", "xhigh", "max"],
   "gpt-6-luna": ["none", "low", "medium", "high", "xhigh", "max"],
   "grok-4.7": ["none", "low", "medium", "high", "xhigh"],
+  "gemini-4-argon": ["low", "medium", "high"],
+  "minimax-m3.1-flash": ["low", "medium", "high", "xhigh", "max"],
 };
 
 const pages = await (await fetch(LIST_URL)).json();

@@ -19,15 +19,11 @@ import { useChatState } from "@/hooks/use-chat-state";
 import { exportMessagesToHtml } from "@/lib/export-thread-html";
 import { exportMessagesToImage } from "@/lib/export-thread-image";
 import { exportMessagesToMarkdown } from "@/lib/export-thread-markdown";
-import { findSectionHeading, getSectionContent, parsePaperSections } from "@/pages/paper-reader/markdown-sections";
 import { type Folder, type FolderTreeNode, type PaperFolderEntry, buildFolderTree } from "@/services/paper-service";
 import { useThemeStore } from "@/store/theme-store";
 import type { Thread } from "@/types/thread";
 import { FileText, Folder as FolderIcon, History, ListChecks, MessageCirclePlus } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-
-/** 注入提示词的"当前小节正文"上限（字符），超出截断 */
-const MAX_ACTIVE_SECTION_CHARS = 3000;
 
 /** 聊天检索作用域：本篇论文 / 某个所属文件夹（含子文件夹）/ 全部文献 / 自定义文件夹集合 */
 type PaperChatScope =
@@ -72,23 +68,12 @@ const PAPER_PROMPT_SUGGESTIONS = ["这篇论文讲了什么？", "总结当前�
 interface PaperChatPanelProps {
   paperId: string;
   paperTitle: string;
-  /** paper.md 原文（提取"当前小节"正文用） */
-  markdown: string;
-  /** PaperReader 上报的当前阅读标题 */
-  currentHeading: { id: string; text: string } | null;
   folders: Folder[];
   members: PaperFolderEntry[];
 }
 
 /** 论文助手聊天面板：头部（模型/作用域选择器 + 对话操作）+ 对话区 + 输入区（agentScope="paper"） */
-export function PaperChatPanel({
-  paperId,
-  paperTitle,
-  markdown,
-  currentHeading,
-  folders,
-  members,
-}: PaperChatPanelProps) {
+export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperChatPanelProps) {
   const { autoScroll } = useThemeStore();
   const [currentThread, setCurrentThread] = useState<Thread | null>(null);
   const [scope, setScope] = useState<PaperChatScope>({ kind: "paper" });
@@ -145,21 +130,6 @@ export function PaperChatPanel({
     }
   }, [scope, paperId, folders, members]);
 
-  /** 当前阅读小节正文（按 heading 从 paper.md 提取，截断 ~3000 字符），随阅读位置上报变化 */
-  const activeSectionContext = useMemo(() => {
-    if (!currentHeading) return undefined;
-    const parsed = parsePaperSections(markdown);
-    const heading =
-      (currentHeading.id ? parsed.headings.find((h) => h.id && h.id === currentHeading.id) : undefined) ??
-      findSectionHeading(parsed, currentHeading.text);
-    if (!heading) return undefined;
-    const content = getSectionContent(parsed, heading);
-    if (!content) return undefined;
-    return content.length > MAX_ACTIVE_SECTION_CHARS
-      ? `${content.slice(0, MAX_ACTIVE_SECTION_CHARS)}\n……（小节较长，已截断）`
-      : content;
-  }, [markdown, currentHeading]);
-
   const {
     input,
     references,
@@ -194,8 +164,8 @@ export function PaperChatPanel({
   } = useChatState({
     chatContext: {
       activeBookId: paperId,
-      activeContext: activeSectionContext,
-      activeSectionLabel: currentHeading?.text,
+      // 阅读位置改由活位置注册表注入提示词（PaperReader 写 setLiveReadingPosition），
+      // 不再随 chatContext 传"当前小节正文/标题"——避免每滚一次就整面板重渲 + 正文重复注入
       agentScope: "paper",
       paperScopeIds,
     },

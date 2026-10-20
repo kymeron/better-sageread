@@ -11,6 +11,7 @@ import PaperExportDialog from "@/pages/paper-reader/paper-export-dialog";
 import PaperHeaderBar from "@/pages/paper-reader/paper-header-bar";
 import { PaperNotepadPanel } from "@/pages/paper-reader/paper-notepad-panel";
 import PaperReader, {
+  type PaperPositionReport,
   type PaperReaderHandle,
   type PaperTranslationContext,
   type TocItem,
@@ -46,6 +47,7 @@ import {
   loadPaperTranslatedMeta,
   loadPaperTranslation,
 } from "@/services/paper-translation-service";
+import { clearLiveReadingPosition } from "@/services/reading-position/live-position";
 import { buildPaperFontFamily, useAppSettingsStore } from "@/store/app-settings-store";
 import { isPaperQueuedOrRunning, useConvertProgressStore } from "@/store/convert-progress-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -65,6 +67,17 @@ interface PaperReaderViewProps {
   title: string;
   /** P2 标签页休眠：为 true 时只卸载重型正文（PaperReader），顶栏/侧栏/聊天保活 */
   viewSleeping?: boolean;
+}
+
+/** 落库的论文阅读位置（book_status.location 的 JSON，v=1；打开论文时按它恢复精确位置） */
+interface StoredPaperLocation {
+  v: 1;
+  /** 小节标题锚点（parsePaperSections / rehype-slug 的 id） */
+  headingId: string;
+  /** 小节内进度 0..1（恢复锚点，比 charOffset 更稳） */
+  fraction: number;
+  /** 正文字符偏移（观测/降级用；恢复以 headingId + fraction 为准） */
+  charOffset?: number;
 }
 
 /**
@@ -112,6 +125,14 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
   const [referencesWrapper, setReferencesWrapper] = useState<Record<string, any> | null>(null);
   const [refCard, setRefCard] = useState<{ refId: string; rect: DOMRect } | null>(null);
   const paperReaderRef = useRef<PaperReaderHandle>(null);
+  // 落库阅读位置：打开论文后按 headingId + 小节内比例恢复（仅一次）
+  const [storedLocation, setStoredLocation] = useState<StoredPaperLocation | null>(null);
+  // 精确位置采集：最新上报值放 ref（滚动逐帧更新不触发本视图重渲，落库时读 ref）
+  const positionReportRef = useRef<PaperPositionReport | null>(null);
+  // 落库节流（5s）与逗留统计：位置不变累计活跃秒数、位置变化落库后清零（Rust 侧真进度判定用）
+  const lastSavedPositionKeyRef = useRef<string | null>(null);
+  const savePositionTimerRef = useRef<number | null>(null);
+  const dwellSecondsRef = useRef(0);
   // T4：图片右键菜单宿主（正文容器）
   const paperContentHostRef = useRef<HTMLDivElement>(null);
   // 论文标注（book_notes 表复用）：CRUD 后 invalidate，下传给 PaperReader 与 PaperNotepadPanel
@@ -400,7 +421,8 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
     };
   }, [paperId, reloadNonce]);
 
-  // New 判定：打开即已阅——unread 首次打开时标记 reading（startedAt 只填一次；lastReadAt 每次刷新）
+  // New 判定：打开即已阅——unread 首次打开时标记 reading（startedAt 只填一次；lastReadAt 每次刷新）；
+  // 同时解析落库阅读位置（location 是 JSON {v:1,headingId,fraction,charOffset}），供恢复精确位置
   useEffect(() => {
     (async () => {
       try {
@@ -411,10 +433,128 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
         } else {
           await updateBookStatus(paperId, { lastReadAt: now });
         }
+        // 历史数据/书籍 CFI 格式的 location 不是 JSON：一律忽略（不恢复、不报错）
+        if (status?.location) {
+          try {
+            const parsed = JSON.parse(status.location) as Partial<StoredPaperLocation> | null;
+            if (parsed && typeof parsed.headingId === "string" && typeof parsed.fraction === "number") {
+              setStoredLocation({
+                v: 1,
+                headingId: parsed.headingId,
+                fraction: Math.min(1, Math.max(0, parsed.fraction)),
+                charOffset: typeof parsed.charOffset === "number" ? parsed.charOffset : undefined,
+              });
+            }
+          } catch {
+            // 非 JSON location（旧版论文按纯 heading 文本存）→ 不恢复
+          }
+        }
       } catch (error) {
         console.warn("更新论文阅读状态失败:", error);
       }
     })();
+  }, [paperId]);
+
+  /**
+   * 最新精确位置落库（节流 5s 调用 + 卸载立即调用）。
+   * progressCurrent/Total 供文献库徽标显示"阅读中 x%"；location 存恢复锚点；
+   * dwellSeconds 供 Rust 侧真进度判定（位置变化 + 逗留达阈值才 bump positionChangedAt）。
+   */
+  const persistPaperPosition = useCallback(async () => {
+    const position = positionReportRef.current;
+    if (!position) return;
+    const dwellToSend = Math.floor(dwellSecondsRef.current);
+    try {
+      await updateBookStatus(paperId, {
+        status: "reading",
+        progressCurrent: Math.round(position.charOffset),
+        progressTotal: Math.max(1, Math.round(position.docLength)),
+        location: JSON.stringify({
+          v: 1,
+          headingId: position.headingId,
+          fraction: position.sectionFraction,
+          charOffset: Math.round(position.charOffset),
+        }),
+        lastReadAt: Date.now(),
+        dwellSeconds: dwellToSend,
+      });
+      // 落库成功且位置已变：清零逗留重新累计（同书籍口径：保存的是"上一位置的累计逗留"）
+      const key = `${position.headingId}:${Math.round(position.charOffset)}`;
+      if (lastSavedPositionKeyRef.current !== key) {
+        lastSavedPositionKeyRef.current = key;
+        dwellSecondsRef.current = 0;
+      }
+    } catch (error) {
+      console.error("保存论文阅读位置失败:", error);
+    }
+  }, [paperId]);
+
+  // 位置上报：只更新 ref + 节流 5s 落库（期间多次滚动以最新值为准，不逐帧打数据库）
+  const handlePositionChange = useCallback(
+    (position: PaperPositionReport) => {
+      positionReportRef.current = position;
+      if (savePositionTimerRef.current !== null) return;
+      savePositionTimerRef.current = window.setTimeout(() => {
+        savePositionTimerRef.current = null;
+        void persistPaperPosition();
+      }, 5000);
+    },
+    [persistPaperPosition],
+  );
+
+  // 恢复落库阅读位置（仅一次）：markdown/paperDir 就绪后按 heading + 小节内比例回跳。
+  // rAF 等一帧让正文布局落定；标题未命中（slug 漂移/元素尚未挂载）时 50ms 再重试一次。
+  // viewSleeping 时正文未挂载：等唤醒后再恢复（此场景内存记忆为空，DB 位置即为后备）。
+  const positionRestoredRef = useRef(false);
+  useEffect(() => {
+    if (positionRestoredRef.current) return;
+    if (viewSleeping || !storedLocation || markdown === null || paperDir === null) return;
+    positionRestoredRef.current = true;
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    // 正文/标题 DOM 可能晚一两帧就绪：最多重试 3 次（50/200/600ms），失败则放弃，
+    // 不反复回跳打扰用户（用户已开始滚动时 scrollToPosition 的落点也会被后续采集修正）。
+    const delays = [50, 200, 600];
+    let attemptIndex = 0;
+    const attempt = () => {
+      if (cancelled) return;
+      const ok = paperReaderRef.current?.scrollToPosition(storedLocation.headingId, storedLocation.fraction) ?? false;
+      if (ok) return;
+      const delay = delays[attemptIndex];
+      if (delay === undefined) return;
+      attemptIndex += 1;
+      retryTimer = window.setTimeout(attempt, delay);
+    };
+    const rafId = requestAnimationFrame(attempt);
+    return () => {
+      // 只取消在飞重试；一旦尝试过就保持 ref=true——避免译文/对照模式切换导致 markdown 变化时
+      // 把用户刚滚到的位置拽回落库起点（恢复只在打开论文后的首次布局窗口内发生）。
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [storedLocation, markdown, paperDir, viewSleeping]);
+
+  // 逗留统计：页面可见时每秒累计（位置不变时增长；落库后按位置是否变化清零）
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") dwellSecondsRef.current += 1;
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // 卸载/切论文：立即落库最后一次位置（节流窗口内的滚动不丢），并清理活位置注册表
+  useEffect(() => {
+    return () => {
+      if (savePositionTimerRef.current !== null) {
+        window.clearTimeout(savePositionTimerRef.current);
+        savePositionTimerRef.current = null;
+      }
+      void persistPaperPosition();
+    };
+  }, [persistPaperPosition]);
+  useEffect(() => {
+    return () => clearLiveReadingPosition("paper", paperId);
   }, [paperId]);
 
   // 论文助手的作用域选择器需要文件夹与成员关系（加载失败时降级为仅"本篇论文/全部文献"）
@@ -663,14 +803,7 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
             swapSidebars ? `mr-1 ${sidebarHeightClass} rounded-md` : `m-1 mt-0 ${sidebarHeightClass} rounded-md`
           }
         >
-          <PaperChatPanel
-            paperId={paperId}
-            paperTitle={title}
-            markdown={markdown ?? ""}
-            currentHeading={currentHeading}
-            folders={folders}
-            members={members}
-          />
+          <PaperChatPanel paperId={paperId} paperTitle={title} folders={folders} members={members} />
         </div>
       </Resizable>
     </MotionSidebar>
@@ -751,9 +884,11 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
               <ImageInteractions containerRef={paperContentHostRef} onQuote={(img) => handleQuoteImageToChat(img)} />
               <PaperReader
                 ref={paperReaderRef}
+                paperId={paperId}
                 paperDir={paperDir}
                 markdown={displayMarkdown ?? markdown}
                 onActiveHeadingChange={setCurrentHeading}
+                onPositionChange={handlePositionChange}
                 onTocChange={setToc}
                 fontSize={globalViewSettings.defaultFontSize}
                 fontFamily={buildPaperFontFamily(globalViewSettings.serifFont, globalViewSettings.defaultCJKFont)}

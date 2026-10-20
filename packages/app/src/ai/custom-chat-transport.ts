@@ -1,6 +1,13 @@
 import { buildPrompt } from "@/constants/prompt";
 import type { ChatContext } from "@/hooks/use-chat-state";
 import { compressDroppedIntoSummary } from "@/services/conversation-summary-service";
+import { getLiveReadingPosition } from "@/services/reading-position/live-position";
+import {
+  formatFallbackPosition,
+  formatPositionForPrompt,
+  resolveLiveReadingPosition,
+} from "@/services/reading-position/position-service";
+import { buildTimestampLookup, composeDynamicTail, withMessageTimestamps } from "@/services/time-awareness";
 import { useChatSettingsStore } from "@/store/chat-settings-store";
 import { useProviderStore } from "@/store/provider-store";
 import type { UIMessage } from "@ai-sdk/react";
@@ -36,30 +43,36 @@ import { wrapToolsWithGuard } from "./utils/tool-guard";
 import { compactAgedRagResults } from "./utils/tool-result-slimming";
 
 /**
- * D3 动态状态段：每轮可能变化的位置信息（阅读章节/论文小节）统一放 system prompt 最尾部，
+ * D3 动态状态段：每轮可能变化的【当前阅读位置】统一放 system prompt 尾部动态区
+ * （其后的最末尾是每轮必变的【当前时间】，见 services/time-awareness），
  * 保证其前面的全部注入段（基词/工具/目录/工作区/记忆）前缀稳定，最大化提示缓存命中。
- * 论文小节正文（chatContext.activeContext，页面按 heading 规则提取）属动态内容，同样后置。
+ *
+ * 2026-10-20 阅读位置桥改造（用户拍板）：
+ * - 书籍与论文统一注入"精确坐标"（mdbook 文件 + 字符偏移 + 估算分块区间 + 进度），
+ *   位置来自活位置注册表（渲染层实时写入），以本轮为准；目录不可用时按 spine 兜底；
+ * - 不再注入论文当前小节正文（目录崩坏时会退化成整篇灌入；改为模型按需调用
+ *   readAtReadingPosition 扩窗读取）；
+ * - 坐标换算失败时降级为章节/小节名，不阻塞聊天。
  */
-function buildDynamicStateSection(chatContext: ChatContext | undefined): string {
+async function buildDynamicStateSection(chatContext: ChatContext | undefined): Promise<string> {
   const agentScope = chatContext?.agentScope ?? "reader";
-  // 反复读：实测模型回答位置类问题时倾向引用自己历史里的旧答案而非本段注入
-  // （注入链已被注入段复述实验证明实时正确）——加显式压制指令
-  const antiEcho = "（位置以此处为准；对话历史中早前提到的小节/位置可能已过时，回答位置类问题时忽略历史，以本段为准）";
-  if (agentScope === "paper") {
-    const label = chatContext?.activeSectionLabel?.trim();
-    const body = chatContext?.activeContext?.trim();
-    const parts: string[] = [];
-    if (label) parts.push(`【当前阅读小节】\n${label}`);
-    if (body) parts.push(`【当前小节正文】\n${body}`);
-    return parts.length > 0 ? parts.join("\n\n") + antiEcho : "";
-  }
+  const docId = chatContext?.activeBookId;
+  if (!docId) return "";
+
   if (agentScope === "reader") {
-    const label = chatContext?.activeSectionLabel?.trim();
-    if (label) return `【当前阅读章节】\n${label}${antiEcho}`;
+    // 分支调用而非传联合 scope：getLiveReadingPosition/resolveLiveReadingPosition 的重载按 scope 收窄
+    const snapshot = await resolveLiveReadingPosition("reader", docId);
+    if (snapshot) return formatPositionForPrompt(snapshot);
+    // 坐标暂不可用：至少给出章节/小节名（并在文案里声明历史位置可能过时）
+    return formatFallbackPosition(getLiveReadingPosition("reader", docId));
+  }
+  if (agentScope === "paper") {
+    const snapshot = await resolveLiveReadingPosition("paper", docId);
+    if (snapshot) return formatPositionForPrompt(snapshot);
+    return formatFallbackPosition(getLiveReadingPosition("paper", docId));
   }
   return "";
 }
-
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   private model: LanguageModel | null;
   private prepareSendMessagesRequest?: PrepareSendMessagesRequest<UIMessage>;
@@ -208,17 +221,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     // sanitizeMessageParts：中断残留的 undefined text part 归一（否则 convert 后 zod 校验报 Invalid prompt）
     // v6 起 convertToModelMessages 为异步（v3 规范），必须 await
-    const convertedMessages = await convertToModelMessages(
-      stripUnknownToolParts(sanitizeMessageParts(selectedMessages), tools),
-      {
-        tools,
-        ignoreIncompleteToolCalls: true,
-      },
+    const modelInputMessages = stripUnknownToolParts(sanitizeMessageParts(selectedMessages), tools);
+    const convertedMessages = await convertToModelMessages(modelInputMessages, {
+      tools,
+      ignoreIncompleteToolCalls: true,
+    });
+
+    // 时间感知（2026-10-20）：历史 user/assistant 消息内容前缀 [YYYY-MM-DD HH:mm]（写死、无相对时间，
+    // 保证同一对话历史逐字节稳定）；只给有 metadata.createdAt 的消息加，缺时间的绝不猜测，
+    // 仅本轮新发的末条 user 消息用发送时刻兜底（下一轮该前缀消失，一次性变化，可接受）。
+    const timestampedMessages = withMessageTimestamps(
+      convertedMessages,
+      buildTimestampLookup(modelInputMessages, convertedMessages, { now: Date.now() }),
     );
 
     // D3 静态优先布局：buildPrompt（基词+静态段+技能+metadata，按书稳定）在前，
-    // 工作区/记忆段（准静态）居中，每轮可能变化的动态状态殿后，最后是罕见的前情摘要。
-    const dynamicSection = buildDynamicStateSection(chatContext);
+    // 工作区/记忆段（准静态）居中，前情摘要（稀有）次之，每轮可能变化的动态状态殿后。
+    const dynamicSection = await buildDynamicStateSection(chatContext);
+    // 动态段顺序：前情摘要（稀有）→【当前阅读位置】（翻页变）→【当前时间】（每轮必变）。
+    // 当前时间必须压在 system prompt 最尾部：这样它前面的所有段（含阅读位置）保持逐字节稳定，
+    // 每轮只击穿这一段，前缀缓存命中最大化；位置段为空/降级时也仍要注入当前时间。
+    const dynamicTail = composeDynamicTail(dynamicSection);
     const directoryBoard = directoryMode ? `\n\n${buildToolDirectoryBoard(guardedTools)}` : "";
     const systemPrompt =
       (await buildPrompt(chatContext)) +
@@ -226,8 +249,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // 工作区根 + 文件即记忆（memory.md）：三 scope 统一在此注入，按 scope 解析生效根
       (await loadWorkspaceSection(agentScope)) +
       (await loadMemorySection(agentScope)) +
-      (dynamicSection ? `\n\n${dynamicSection}` : "") +
-      (summaryText ? `\n\n【前情摘要】\n${summaryText}\n（以上为早期对话的压缩摘要，非原始记录）` : "");
+      // 前情摘要变化频率低（触发压缩才换），放在动态段之前，避免翻页/时间更新时被连带击穿
+      (summaryText ? `\n\n【前情摘要】\n${summaryText}\n（以上为早期对话的压缩摘要，非原始记录）` : "") +
+      (dynamicTail ? `\n\n${dynamicTail}` : "");
 
     // P3 思考强度档位：AI SDK 原生参数族（openai/google/openrouter/grok）在此下发；
     // DeepSeek/GLM/Qwen/Kimi 等自定义端点由 factory 的动态 fetch 包装打请求体补丁
@@ -236,7 +260,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const result = streamText({
       model,
-      messages: convertedMessages,
+      messages: timestampedMessages,
       abortSignal: options.abortSignal,
       toolChoice: "auto",
       stopWhen: isStepCount(20),

@@ -113,7 +113,12 @@ const TOCView: React.FC<{
     };
   }, [expandedItems]);
 
-  const activeHref = useMemo(() => progress?.sectionHref || null, [progress?.sectionHref]);
+  // 高亮锚点优先用 TOC 原始 href（含 #fragment，可精确到子小节）；
+  // sectionHref 自 2026-10-20 阅读位置桥改造后是 spine 资源路径，仅作旧数据兜底
+  const activeHref = useMemo(
+    () => progress?.tocHref || progress?.sectionHref || null,
+    [progress?.tocHref, progress?.sectionHref],
+  );
   const flatItems = useFlattenedTOC(toc, expandedItems);
   const activeItemIndex = useMemo(() => {
     return flatItems.findIndex((item) => item.item.href === activeHref);
@@ -194,7 +199,7 @@ const TOCView: React.FC<{
     const shouldAutoExpand = autoExpand;
     if (!shouldAutoExpand) return;
 
-    const { sectionHref: currentHref } = progress;
+    const currentHref = progress.tocHref || progress.sectionHref;
     if (currentHref) {
       expandParents(toc, currentHref);
     }

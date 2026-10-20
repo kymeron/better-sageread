@@ -117,8 +117,7 @@ function normalizeChatError(error: unknown): Error {
 
 export interface ChatContext {
   activeBookId?: string;
-  /** paper 专用：当前阅读小节正文（页面按 heading 从 paper.md 规则提取）；reader/central 不使用 */
-  activeContext?: string;
+  /** reader 专用：当前 TOC 章节名（仅用于提示词目录裁剪；精确阅读位置走 services/reading-position 活注册表） */
   activeSectionLabel?: string;
   /** reader 专用：EPUB 原生 TOC 的 Markdown 列表（转换器生成的 metadata.md 目录段号被
    *  转义吃掉——"5.6"→"5.\."，Agent 看到的子节号码全丢）；有则整段替换注入目录 */
@@ -186,6 +185,9 @@ export function useChatState(options: UseChatStateOptions): UseChatStateReturn {
 
   const messagesRef = useRef<UIMessage[]>([]);
   const reasoningTimesRef = useRef<{ [messageId: string]: ReasoningTimes }>({});
+  // 时间感知兜底（2026-10-20）：本次会话内 user 消息的发送时刻（秒）。
+  // 落库前若 SDK 快照把 handleSubmit 补的 createdAt 丢了，用它补回；历史旧消息不在表内、不追溯。
+  const userSentAtRef = useRef<Map<string, number>>(new Map());
 
   // H1 断点续传：落库统一走 persistMessagesNow（submit/finish/abort/error 事件触发，无流式周期写）。
   // 在飞期间到达的请求不再丢弃——只记最新一份，当前写完后补写（尾沿合并），
@@ -202,8 +204,17 @@ export function useChatState(options: UseChatStateOptions): UseChatStateReturn {
       let current: { threadId: string; msgs: UIMessage[] } | null = { threadId, msgs };
       while (current) {
         try {
+          // 时间感知兜底：user 消息缺 createdAt 时用本次会话记录的发送时刻补齐（幂等；历史旧消息无记录不补）
+          const msgsWithUserTimes = current.msgs.map((msg) => {
+            if (msg.role !== "user") return msg;
+            const existing = (msg.metadata as MessageMetadata) || {};
+            if (existing.createdAt) return msg;
+            const sentAt = userSentAtRef.current.get(msg.id);
+            if (!sentAt) return msg;
+            return { ...msg, metadata: { ...existing, createdAt: sentAt } as MessageMetadata };
+          });
           // D6 L1 出生截断：落库内容换预览（内存态保持全量供 UI/当轮使用；当轮在飞链不经过落库）
-          await editThread(current.threadId, { messages: truncateToolResultsForStorage(current.msgs) });
+          await editThread(current.threadId, { messages: truncateToolResultsForStorage(msgsWithUserTimes) });
         } catch (error) {
           console.warn("对话增量落库失败:", error);
         }
@@ -992,6 +1003,10 @@ export function useChatState(options: UseChatStateOptions): UseChatStateReturn {
       setImages([]);
       setFiles([]);
 
+      // 时间感知（2026-10-20）：user 消息此前不落 createdAt（只有 assistant 在 onFinish 写），
+      // 导致历史 user 提问无法带时间戳。发送前钉一个发送时刻，随 metadata 落库（幂等：已有不覆盖）。
+      const sentAtSeconds = Math.floor(Date.now() / 1000);
+
       try {
         await sendMessage({ parts: messageParts });
         setMessages((prev) => {
@@ -1007,12 +1022,16 @@ export function useChatState(options: UseChatStateOptions): UseChatStateReturn {
               continue;
             }
             const existingMetadata = (message.metadata as MessageMetadata) || {};
+            if (!existingMetadata.createdAt) {
+              userSentAtRef.current.set(message.id, sentAtSeconds);
+            }
             nextMessages[i] = {
               ...message,
               parts: messageParts,
               metadata: {
                 ...existingMetadata,
                 references: referenceSnapshot,
+                createdAt: existingMetadata.createdAt ?? sentAtSeconds,
               } as MessageMetadata,
             };
             break;

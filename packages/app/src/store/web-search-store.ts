@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 /** 搜索 Provider 类型 */
-export type SearchProvider = "builtin" | "bocha" | "zhipu" | "tavily" | "serper" | "searxng";
+export type SearchProvider = "builtin" | "bocha" | "zhipu" | "deepseek" | "tavily" | "serper" | "searxng";
 
 /** 内置引擎（仅 builtin 模式下有效） */
 export type SearchEngine = "auto" | "bing" | "baidu" | "duckduckgo";
@@ -15,6 +15,7 @@ interface WebSearchState {
   /** 各 provider 的 API Key */
   bochaKey: string;
   zhipuKey: string;
+  deepseekKey: string;
   tavilyKey: string;
   serperKey: string;
   /** SearXNG 服务地址 */
@@ -26,6 +27,7 @@ interface WebSearchState {
   setEngine: (engine: SearchEngine) => void;
   setBochaKey: (key: string) => void;
   setZhipuKey: (key: string) => void;
+  setDeepseekKey: (key: string) => void;
   setTavilyKey: (key: string) => void;
   setSerperKey: (key: string) => void;
   setSearxngUrl: (url: string) => void;
@@ -39,6 +41,7 @@ export const useWebSearchStore = create<WebSearchState>()(
       engine: "auto",
       bochaKey: "",
       zhipuKey: "",
+      deepseekKey: "",
       tavilyKey: "",
       serperKey: "",
       searxngUrl: "http://localhost:8080",
@@ -48,6 +51,7 @@ export const useWebSearchStore = create<WebSearchState>()(
       setEngine: (engine) => set({ engine }),
       setBochaKey: (bochaKey) => set({ bochaKey }),
       setZhipuKey: (zhipuKey) => set({ zhipuKey }),
+      setDeepseekKey: (deepseekKey) => set({ deepseekKey }),
       setTavilyKey: (tavilyKey) => set({ tavilyKey }),
       setSerperKey: (serperKey) => set({ serperKey }),
       setSearxngUrl: (searxngUrl) => set({ searxngUrl }),
@@ -68,6 +72,7 @@ export const useWebSearchStore = create<WebSearchState>()(
         engine: state.engine,
         bochaKey: "",
         zhipuKey: "",
+        deepseekKey: "",
         tavilyKey: "",
         serperKey: "",
         searxngUrl: state.searxngUrl,

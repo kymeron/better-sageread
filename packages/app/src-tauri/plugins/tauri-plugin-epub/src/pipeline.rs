@@ -82,29 +82,62 @@ where
         log::info!("MDBook is up-to-date, skipping conversion");
     }
 
-    // Step 2: Parse and flatten TOC (支持 nav.md 和 toc.ncx)
+    // Step 2: Parse and flatten TOC (支持 nav.md 和 toc.ncx；两者都缺失时按 EPUB spine 回退)
     log::info!("Parsing TOC structure...");
-    
+
     // 优先查找 nav.md (EPUB 3)，找不到再找 toc.ncx (EPUB 2)
     let toc_path = find_nav_md_in_mdbook(&mdbook_dir)
-        .or_else(|| find_toc_ncx_in_mdbook(&mdbook_dir))
-        .context("Neither nav.md nor toc.ncx found in MDBook directory")?;
+        .or_else(|| find_toc_ncx_in_mdbook(&mdbook_dir));
+    // mdbook src 根（epub2mdbook with_file_name=true 的约定布局是 mdbook/<book_name>/src）
+    let mdbook_src_root = crate::position::find_mdbook_src_root(&mdbook_dir)
+        .unwrap_or_else(|| mdbook_dir.join("book").join("src"));
 
-    log::info!("Found TOC file at: {:?}", toc_path);
-    
-    // 根据文件扩展名选择解析器
-    let toc_nodes = if toc_path.extension().and_then(|s| s.to_str()) == Some("md") {
-        log::info!("Using nav.md parser (EPUB 3)");
-        parse_nav_md_file(&toc_path)
-            .map_err(|e| anyhow::anyhow!("Failed to parse nav.md: {}", e))?
-    } else {
-        log::info!("Using toc.ncx parser (EPUB 2)");
-        parse_toc_file(&toc_path)
-            .map_err(|e| anyhow::anyhow!("Failed to parse toc.ncx: {}", e))?
+    let (flat_toc, toc_base_dir) = match toc_path {
+        Some(toc_path) => {
+            log::info!("Found TOC file at: {:?}", toc_path);
+
+            // 根据文件扩展名选择解析器
+            let toc_nodes = if toc_path.extension().and_then(|s| s.to_str()) == Some("md") {
+                log::info!("Using nav.md parser (EPUB 3)");
+                parse_nav_md_file(&toc_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse nav.md: {}", e))?
+            } else {
+                log::info!("Using toc.ncx parser (EPUB 2)");
+                parse_toc_file(&toc_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse toc.ncx: {}", e))?
+            };
+
+            let flat_toc = flatten_toc(&toc_nodes);
+            log::info!("TOC parsing completed: {} entries found", flat_toc.len());
+
+            if flat_toc.is_empty() {
+                // 目录文件存在但解析为空（空目录 / 不支持的目录格式）：仍按 spine 回退，
+                // 避免 flat_toc 为空导致整书 0 chunk
+                let fallback = build_spine_fallback_toc(&epub_path, &mdbook_src_root)?;
+                if fallback.is_empty() {
+                    anyhow::bail!(
+                        "TOC file parsed to empty TOC and EPUB spine fallback is empty: {:?}",
+                        toc_path
+                    );
+                }
+                (fallback, mdbook_src_root)
+            } else {
+                let base = toc_path
+                    .parent()
+                    .ok_or_else(|| anyhow::anyhow!("Cannot get parent directory of TOC file"))?
+                    .to_path_buf();
+                (flat_toc, base)
+            }
+        }
+        None => {
+            // 既无 nav.md 也无 toc.ncx（EPUB3 仅 nav.xhtml / 目录缺失）：按 spine 顺序合成扁平 TOC
+            let fallback = build_spine_fallback_toc(&epub_path, &mdbook_src_root)?;
+            if fallback.is_empty() {
+                anyhow::bail!("Neither nav.md nor toc.ncx found in MDBook directory");
+            }
+            (fallback, mdbook_src_root)
+        }
     };
-
-    let flat_toc = flatten_toc(&toc_nodes);
-    log::info!("TOC parsing completed: {} entries found", flat_toc.len());
 
     // Write chapters to text files under book_dir/chapters (keep for backward compatibility)
     let chapters_dir = book_dir.join("chapters");
@@ -128,12 +161,10 @@ where
     let _mdbook_src_dir = mdbook_dir.join("book").join("src");
     log::info!("Processing MD files for chunking (dedup by md_src)...");
 
-    // 获取toc.ncx文件所在的目录，MD文件路径都是相对于它的
-    let toc_base_dir = toc_path.parent()
-        .ok_or_else(|| anyhow::anyhow!("Cannot get parent directory of TOC file"))?;
+    // toc_base_dir：TOC 侧 md_src 的相对基准；spine 回退时即 mdbook src 根
 
     // Step 2.5: Write metadata.md combining metadata.json and TOC summary
-    if let Err(e) = write_metadata_markdown(book_dir, &epub_content, &flat_toc, toc_base_dir) {
+    if let Err(e) = write_metadata_markdown(book_dir, &epub_content, &flat_toc, &toc_base_dir) {
         log::warn!("生成 metadata.md 失败：{}", e);
     } else {
         log::info!("已生成 metadata.md（用于模型提示）");
@@ -470,6 +501,70 @@ pub async fn search_db_with_mode<P: AsRef<Path>>(
             db.search_with_mode_filtered(query, Some(&embedding), limit, &config, None, include_references)
         }
     }
+}
+
+/// TOC 缺失时的兜底：按 EPUB spine 顺序合成扁平 TOC（每个 spine 页一项，depth=0）。
+///
+/// epub2mdbook 的 md 文件路径 = EPUB zip 资源路径换 .md 扩展、位于 src_root 下，
+/// 因此 spine 页路径可直接映射为 md_src（toc_base_dir = src_root）。
+/// 标题取对应 md 文件首个 ATX 标题，没有则用「第 N 部分」兜底。
+fn build_spine_fallback_toc(epub_path: &Path, src_root: &Path) -> Result<Vec<FlatTocNode>> {
+    use epub::doc::EpubDoc;
+
+    let mut doc = EpubDoc::new(epub_path)
+        .map_err(|e| anyhow::anyhow!("TOC 回退：打开 EPUB 失败: {}", e))?;
+    let num_pages = doc.get_num_pages();
+    let mut nodes: Vec<FlatTocNode> = Vec::with_capacity(num_pages);
+
+    for index in 0..num_pages {
+        if !doc.set_current_page(index) {
+            continue;
+        }
+        let Some(page_path) = doc.get_current_path() else {
+            continue;
+        };
+        let page_path = page_path.to_string_lossy().replace('\\', "/");
+        let page_path = page_path.trim_start_matches('/');
+        let md_src = crate::position::replace_html_ext_with_md(page_path);
+        let title = std::fs::read_to_string(src_root.join(&md_src))
+            .ok()
+            .and_then(|content| first_atx_heading_title(&content))
+            .unwrap_or_else(|| format!("第 {} 部分", index + 1));
+
+        nodes.push(FlatTocNode {
+            id: format!("spine_{}", index + 1),
+            play_order: (index + 1) as u32,
+            title: title.clone(),
+            md_src,
+            depth: 0,
+            anchor: None,
+            hierarchy_path: vec![title],
+        });
+    }
+
+    log::warn!("TOC 缺失，按 spine 顺序回退（{} 项）", nodes.len());
+    Ok(nodes)
+}
+
+/// 取 Markdown 首个 ATX 标题文本（CommonMark：1-6 个 # 后需空白；无则 None）
+fn first_atx_heading_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
+        if hashes == 0 || hashes > 6 {
+            continue;
+        }
+        let rest = &trimmed[hashes..];
+        if !(rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t')) {
+            continue;
+        }
+        // 闭合 ATX 形式（"## 标题 ##"）去掉尾部 # 序列
+        let title = rest.trim().trim_end_matches('#').trim();
+        if !title.is_empty() {
+            return Some(title.to_string());
+        }
+    }
+    None
 }
 
 fn sanitize_filename(name: &str) -> String {
@@ -955,5 +1050,32 @@ pub async fn search_papers_global<P: AsRef<Path>>(
 
             db.search_with_mode_filtered(query, None, limit, &config, paper_ids.as_deref(), include_references)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_first_atx_heading_title() {
+        assert_eq!(
+            first_atx_heading_title("\n# 第一章\n正文"),
+            Some("第一章".to_string())
+        );
+        // 闭合 ATX + 多个 # 级别
+        assert_eq!(
+            first_atx_heading_title("### 三级标题 ###\n"),
+            Some("三级标题".to_string())
+        );
+        // # 后无空白不算 ATX 标题（如 #include）
+        assert_eq!(first_atx_heading_title("#include <stdio.h>\n正文"), None);
+        assert_eq!(first_atx_heading_title("正文没有标题"), None);
+        assert_eq!(first_atx_heading_title(""), None);
+        // 跳过空行取第一个有效标题
+        assert_eq!(
+            first_atx_heading_title("\n\n## 第二个\n# 不会到这里\n"),
+            Some("第二个".to_string())
+        );
     }
 }

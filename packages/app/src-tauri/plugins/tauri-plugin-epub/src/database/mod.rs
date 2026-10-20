@@ -17,6 +17,20 @@ use std::path::Path;
 use rusqlite::params;
 use crate::models::{DocumentChunk, SearchResult};
 
+/// 阅读位置桥用的分块统计：某 md 文件 / 某论文的分块数与 global_chunk_index 区间
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChunkStats {
+    /// 该文件 / 该论文的分块数
+    pub count: usize,
+    /// 最小 global_chunk_index
+    pub min_global_index: i64,
+    /// 最大 global_chunk_index
+    pub max_global_index: i64,
+    /// 作用域内分块总数（书籍 = 全书；论文 = 本篇）——「约分块 X–Y/total」的分母。
+    /// range 用的是 global_chunk_index（全书/全篇坐标系），不能拿单文件分块数当分母。
+    pub total: usize,
+}
+
 /// 向量数据库包装器，提供向后兼容的API
 pub struct VectorDatabase {
     db: DatabaseConnection,
@@ -395,6 +409,63 @@ impl VectorDatabase {
         Ok(results)
     }
 
+    /// 按 md 文件路径统计分块（阅读位置桥：书籍侧按 mdbook 内 md 路径估算命中分块区间）。
+    /// 路径分隔符归一化兜底：Windows 下旧库可能存反斜杠分隔符，与 / 口径比较。
+    /// 该文件无分块（或库为空）返回 None。
+    pub fn chunk_stats_by_md_path(&self, md_file_path: &str) -> Result<Option<ChunkStats>> {
+        use rusqlite::params;
+        let normalized = md_file_path.replace('\\', "/");
+        let (count, min_index, max_index): (i64, i64, i64) = self.db.connection().query_row(
+            r#"
+            SELECT COUNT(*),
+                   COALESCE(MIN(global_chunk_index), 0),
+                   COALESCE(MAX(global_chunk_index), 0)
+            FROM document_chunks
+            WHERE md_file_path = ?1 OR REPLACE(md_file_path, char(92), '/') = ?2
+            "#,
+            params![md_file_path, normalized],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        // 全书分块总数：注入的「约分块 a–b/total」里 a/b 是全局索引，分母必须是全书总数
+        let total: i64 = self
+            .db
+            .connection()
+            .query_row(r#"SELECT COUNT(*) FROM document_chunks"#, [], |row| row.get(0))?;
+        Ok(chunk_stats_from_row(count, min_index, max_index, total))
+    }
+
+    /// 按 paper_id 统计分块（阅读位置桥：论文侧 global_chunk_index 在篇内连续递增）。
+    /// 该论文无分块（未索引 / stale）返回 None。
+    pub fn chunk_stats_by_paper_id(&self, paper_id: &str) -> Result<Option<ChunkStats>> {
+        use rusqlite::params;
+        let (count, min_index, max_index): (i64, i64, i64) = self.db.connection().query_row(
+            r#"
+            SELECT COUNT(*),
+                   COALESCE(MIN(global_chunk_index), 0),
+                   COALESCE(MAX(global_chunk_index), 0)
+            FROM document_chunks
+            WHERE paper_id = ?1
+            "#,
+            params![paper_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        // 篇内分块总数与 count 同值（global_chunk_index 为篇内索引），显式回填保持语义一致
+        Ok(chunk_stats_from_row(count, min_index, max_index, count))
+    }
+
+}
+
+/// 分块统计行 → ChunkStats（count 为 0 时返回 None：视为无索引，不给分块区间）
+fn chunk_stats_from_row(count: i64, min_index: i64, max_index: i64, total: i64) -> Option<ChunkStats> {
+    if count <= 0 {
+        return None;
+    }
+    Some(ChunkStats {
+        count: count as usize,
+        min_global_index: min_index,
+        max_global_index: max_index,
+        total: total.max(count) as usize,
+    })
 }
 
 

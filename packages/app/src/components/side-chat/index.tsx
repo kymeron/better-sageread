@@ -6,6 +6,7 @@ import { exportMessagesToHtml } from "@/lib/export-thread-html";
 import { exportMessagesToImage } from "@/lib/export-thread-image";
 import { exportMessagesToMarkdown } from "@/lib/export-thread-markdown";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
+import { clearLiveReadingPosition, setLiveReadingPosition } from "@/services/reading-position/live-position";
 import { useThemeStore } from "@/store/theme-store";
 import {
   CircleQuestionMark,
@@ -17,7 +18,7 @@ import {
   Search,
   UserSearch,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
 import { MindmapDialog } from "../tools/mindmap-dialog";
@@ -44,6 +45,9 @@ function ChatContent({ bookId }: ChatContentProps) {
   const currentThread = useReaderStore((state) => state.currentThread);
   const setCurrentThread = useReaderStore((state) => state.setCurrentThread)!;
 
+  // 书籍数据（含 bookDoc.toc）：判定 TOC 是否可用，供阅读位置注册表标记 tocAvailable
+  const bookData = useReaderStore((state) => state.bookData);
+
   // EPUB 原生 TOC → Markdown 列表（注入提示词替换转换器生成的损坏目录，见 ChatContext.bookTocMd）
   const bookToc = useReaderStore((state) => state.bookData?.bookDoc?.toc);
   const bookTocMd = useMemo(() => {
@@ -58,6 +62,28 @@ function ChatContent({ bookId }: ChatContentProps) {
     const md = walk(bookToc, 0);
     return md.trim().length > 0 ? md : undefined;
   }, [bookToc]);
+
+  // 阅读位置桥（2026-10-20）：foliate relocate 的实时位置写入活位置注册表，
+  // 供提示词动态段 / getReadingPosition / readAtReadingPosition 读取。
+  // progress 由 relocate 每页更新，这里只写模块级 Map（不触发渲染）；
+  // 切换书 / 卸载时清理本书记录，避免残留旧位置。
+  useEffect(() => {
+    if (!bookId || !progress) return;
+    const id = bookId;
+    setLiveReadingPosition({
+      scope: "reader",
+      bookId: id,
+      sectionIndex: progress.sectionIndex ?? progress.section?.current ?? 0,
+      sectionHref: progress.sectionHref ?? "",
+      sectionFraction: progress.sectionFraction ?? 0,
+      locCurrent: progress.pageinfo?.current ?? 0,
+      locTotal: progress.pageinfo?.total ?? 0,
+      label: progress.sectionLabel ?? "",
+      tocAvailable: (bookData?.bookDoc?.toc?.length ?? 0) > 0,
+      cfi: progress.location ?? "",
+    });
+    return () => clearLiveReadingPosition("reader", id);
+  }, [bookId, progress, bookData]);
 
   // 多选导出：切换对话自动退出
   const { selectionMode, selectedIds, toggleSelectionMode, exitSelectionMode, handleToggleSelect } =

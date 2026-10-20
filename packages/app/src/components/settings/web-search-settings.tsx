@@ -13,7 +13,7 @@ interface ProviderMeta {
   desc: string;
   link?: string;
   linkLabel?: string;
-  keyField?: "bochaKey" | "zhipuKey" | "tavilyKey" | "serperKey";
+  keyField?: "bochaKey" | "zhipuKey" | "deepseekKey" | "tavilyKey" | "serperKey";
   placeholder?: string;
 }
 
@@ -35,6 +35,15 @@ const PROVIDERS: ProviderMeta[] = [
     linkLabel: "注册获取 API Key",
     keyField: "zhipuKey",
     placeholder: "输入智谱 API Key",
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek（官方搜索）",
+    desc: "DeepSeek 官方自研搜索，中文与英文均衡。需 DeepSeek API Key（与对话模型同一把 Key，无需另注册搜索服务）。",
+    link: "https://platform.deepseek.com/api_keys",
+    linkLabel: "注册获取 API Key",
+    keyField: "deepseekKey",
+    placeholder: "输入 DeepSeek API Key",
   },
   {
     id: "tavily",
@@ -67,22 +76,25 @@ export default function WebSearchSettings() {
   const {
     bochaKey,
     zhipuKey,
+    deepseekKey,
     tavilyKey,
     serperKey,
     searxngUrl,
     enabledProviders,
     setBochaKey,
     setZhipuKey,
+    setDeepseekKey,
     setTavilyKey,
     setSerperKey,
     setSearxngUrl,
     toggleProvider,
   } = useWebSearchStore();
 
-  const keyValues: Record<string, string> = { bochaKey, zhipuKey, tavilyKey, serperKey };
+  const keyValues: Record<string, string> = { bochaKey, zhipuKey, deepseekKey, tavilyKey, serperKey };
   const keySetters: Record<string, (v: string) => void> = {
     bochaKey: setBochaKey,
     zhipuKey: setZhipuKey,
+    deepseekKey: setDeepseekKey,
     tavilyKey: setTavilyKey,
     serperKey: setSerperKey,
   };

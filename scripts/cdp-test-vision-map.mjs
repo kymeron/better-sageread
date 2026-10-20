@@ -139,6 +139,12 @@ const expression = `
   check("mistral mistral-large-4-0 前缀放行", v("mistral", "mistral-large-4-0") === true, "");
   check("custom muse-wonder 放行", v("custom", "muse-wonder") === true, "");
 
+  // ---- 2026-10-20 批次：Gemini 4 Argon / MiniMax M3.1 Flash（官方文档 + SDK 核实多模态输入） ----
+  check("google gemini-4-argon 放行", v("google", "gemini-4-argon") === true, "");
+  check("openrouter google/gemini-4-argon 放行（作者前缀归一）", v("openrouter", "google/gemini-4-argon") === true, "");
+  check("minimax MiniMax-M3.1-Flash 放行（大小写归一）", v("minimax", "MiniMax-M3.1-Flash") === true, "");
+  check("openrouter minimax/minimax-m3.1-flash 放行", v("openrouter", "minimax/minimax-m3.1-flash") === true, "");
+
   // ---- 自定义/未知端点：默认放行（维持现状原则） ----
   check("custom 自定义端点默认放行", v("custom", "my-model") === true, "");
   check("未知型号命名启发式兜底（新视觉命名）", v("deepseek", "deepseek-v9-vision-x") === true, "");

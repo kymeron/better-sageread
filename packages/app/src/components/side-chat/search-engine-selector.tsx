@@ -13,6 +13,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   builtin: "内置引擎",
   bocha: "博查",
   zhipu: "智谱",
+  deepseek: "DeepSeek",
   tavily: "Tavily",
   serper: "Serper",
   searxng: "SearXNG",

@@ -353,3 +353,70 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
 **扫描版/复杂版 PDF 分流（2026-09-17 二轮拍板）**：不走多模态栅格化单开路线，**直接复用设置页已有的 PDF 转换引擎——MinerU 优先、PaddleOCR 兜底（用户原话："有哪个用哪个，优先 MinerU"）**。触发时机：MarkItDown 提取为空/乱码（扫描件特征）或用户指定；引擎不可用（未安装/未配置）→ 路径登记 + 明确提示，不静默失败。
 阈值：单文件 ≤50MB、单次 ≤10 个；交互：原生拖拽 + 回形针 accept 扩宽，附件区文件 chip 显图标+名称+大小。
 **施工分期**：A. app 侧附件基建 ✅（dc8d2bb，E2E 过）；B. MarkItDown sidecar 打包接入 ✅（df210cf，E2E 过：PDF/DOCX 自动转 md 注入）；C. 扫描件分流 ✅（本轮，E2E 过：扫描版 PDF → MarkItDown 空 → MinerU 引擎 16s 解析成功，OCR 全文注入）。**附件上传三期全部完工（2026-09-17）**。
+
+---
+
+## 🆕 2026-10-17 聊天尾部窗口扩展时视口跳底 —— 本轮挂账（仅代码调查，未施工）
+
+**用户实测现象**：侧栏对话分批渲染（用户口中的【块1】【块2】…＝一批消息，不是 markdown 块）。停在最后一批（块4）底部往上翻，翻到块4顶部时块3被挂载；挂载完成后视口**跳回块4底部**，得重新往上翻。期望行为：块3落地后视口停在块3/块4交界处不动。
+
+**机制定位**（`packages/app/src/components/side-chat/chat-messages.tsx`，三块聊天面板共用同一组件）：
+
+- 窗口参数 L84–88：`INITIAL_WINDOW = 6`、`EXPAND_STEP = 6`；`visibleMessages = messages.slice(windowStartIndex, windowEndIndex)`（L521–523）。所谓「扩展」＝**在当前视口上方一次性插入 6 条完整消息**。
+- 顶部占位只是一枚约 30px 的虚线按钮（L890–903），**不为未渲染的 N 条预留任何估算高度**——所以补偿一旦失准，代价是整屏跳变而不是几像素抖动。
+- 触发链：`IntersectionObserver` + `rootMargin: "200px 0px 0px 0px"`（L570–582）→ `expandWindow()`（L529–533）先记 `prevHeight = scroller.scrollHeight`，再 `setVisibleCount`。
+- 补偿：`useLayoutEffect([visibleCount])`（L557–565）`delta = scrollHeight - prevHeight; if (delta > 0) scrollTop += delta`。
+- 滚动容器＝`StickToBottom` 根 div 本身（`prompt-kit/chat-container.tsx:54-55`，`flex overflow-y-auto overflow-x-hidden`）；不是 window，也不是 Radix ScrollArea。
+
+**根因判断（按嫌疑排序）**：
+
+1. 🔴 **与浏览器原生滚动锚定双重补偿（首要嫌疑，能精确解释「跳回块4底」）**。全仓库检索 `overflow-anchor`/`overflowAnchor` **零命中**（`packages/app/src`、`app-tabs`、`foliate-js`、所有 CSS、`use-stick-to-bottom` dist 全查过），即 Chromium/WebView2 默认 `auto`：视口上方插入内容时，浏览器**已经自动**把 `scrollTop` 加了增量。手写补偿再加一次 → 净位移 ≈ 2×delta。6 条完整消息的 delta 通常远大于用户上翻的距离 d，于是 `scrollTop` 冲过上限被 clamp 到 `scrollHeight - clientHeight`，也就是**当前列表末尾＝块4底部**——与用户描述逐字吻合。（读 `scrollHeight` 会强制同步布局，原生锚定的调整此刻已生效，`delta` 本身不含这部分，所以双份是实打实叠上去的。）
+2. 🟠 **`expandWindow` 没有脱离底部跟随**。下滑路径的 `expandNewer`（L535–539）显式先 `stopScroll()`，还留了注释「跟随锁会把视图拽到新的底部」；上滑路径的 `expandWindow` 缺这一步。`StickToBottom` 的 ResizeObserver 对**任意正向增高**都会调 `scrollToBottom({ preserveScrollPosition: true, wait: true, duration: 350ms })`（`node_modules/use-stick-to-bottom/dist/useStickToBottom.js:306-332`），只靠 `state.isAtBottom` 为假在 `next()` 首行短路（同文件 L143–146）。滚轮上翻会 `setIsAtBottom(false)`（L286–292）多数情况能短路；但 `STICK_TO_BOTTOM_OFFSET_PX = 70`（L28）配上 `rootMargin 200px`，意味着「最后一条消息较短时，占位行不用上翻就已进入观察区」，此时 `isAtBottom` 若仍为真，弹簧会把视口拉回底部——**同一现象的第二条独立路径**。
+3. 🟡 **delta 量得太早**。补偿在 commit 后的 layout effect 里只读一次 `scrollHeight`，但聊天 markdown 存在异步增高内容：Shiki 高亮、KaTeX、图片、可折叠工具调用区（`prompt-kit/reasoning.tsx` 的 maxHeight 过渡）、流式揭示（`hooks/use-stream-reveal.ts`）。这些都在补偿之后才落地 → 即便修掉 1 和 2，仍会有残余漂移。
+
+**修法方向（待拍板，别直接照抄）**：
+
+- A（最小改动，二选一，**当前是两者并存**）：给滚动容器显式声明锚定策略——要么 `overflow-anchor: none` 关掉原生锚定只留手写补偿，要么删掉手写补偿完全交给原生锚定。需实测哪种在 WebView2 上对异步增高内容更稳。
+- B：顶部占位按未渲染条数做高度估算/预留（粗估也行），把补偿失准的代价从整屏跳变压到几像素。
+- C：`expandWindow` 对齐 `expandNewer`，扩展前 `stopScroll()`；并考虑扩展期间暂停 ResizeObserver 触发的 `scrollToBottom`。
+- D（**倾向方案**）：补偿改「锚点元素法」——扩展前记录视口内首个可见消息的 `data-message-id` 及其 `getBoundingClientRect().top`，扩展后用同一元素的新位置反算 `scrollTop`。天然免疫原生锚定叠加与异步增高，且与 `prompt-kit/chat-message-rail.tsx:257` 已有的坐标换算是同一套做法。A/B/C 可作辅助。
+- 验收口径：停在末批底部 → 上翻触发扩展 → 视口应停在原「块3/块4 交界」±数像素；连续多次上翻不累积漂移；流式输出进行中上翻扩展不破坏底部跟随语义。
+
+**关联旧账**：`docs/audits/reading-position-and-chunks-audit.md` §4 缺口清单第 1 条「阅读位置 → 块映射（双侧）」仍是未接的桥（该条目前只活在审计文档里，未进本账本）。本条是渲染层的滚动锚定问题，与那条的语义映射无关，勿混。
+
+---
+
+## 🆕 2026-10-20 阅读位置桥施工 + 三项挂账（用户拍板：本轮只做阅读位置，其余挂账）
+
+### ✅ 本轮施工（书籍 + 论文双侧）
+
+- 书籍侧：foliate relocate 扩出 spine 序号 / 章内 fraction / href → mdbook 文本坐标（partNNN.md + 字符偏移 + 估算分块区间），目录缺失时按 spine 兜底；论文侧：heading + paper.md 字符偏移 + 分块区间；两侧统一在 system prompt 尾部注入【当前阅读位置】（每轮刷新、以本轮为准），不再注入论文当前小节正文（目录崩坏时整篇灌入的浪费路径已移除）。
+- 论文阅读位置落库/恢复（book_status.location JSON + progress 字符进度）+ 论文卡「阅读中 x%」。
+- 新增工具 getReadingPosition / readAtReadingPosition（按位置读 mdbook 原文窗口、before/after 扩窗、next_offset 续读）。
+- TOC-less EPUB 索引回退（按 spine 顺序合成目录），修复「无 nav 无 NCX 直接索引失败」。
+- 详见 docs/audits/reading-position-and-chunks-audit.md §4 缺口 1/2 的落地。
+
+### 📌 挂账（2026-10-20 用户确认「其他挂账」）
+
+1. **Agent 时间感知** —— ✅ 已落地（2026-10-20 用户验收轮）
+   - 实现：历史消息内容前缀 `[YYYY-MM-DD HH:mm] `（写死、无相对时间，逐字节稳定）；【当前时间】压在 system prompt 最尾部（【当前阅读位置】之后），每轮只击穿尾部；通用规则进 shared-policy。
+   - 时间源：assistant 用 onFinish 落的 `metadata.createdAt`；**本轮顺手补齐了 user 消息的 createdAt 落库**（handleSubmit 发送前钉发送时刻并随 metadata 持久化）——否则历史 user 提问永远无时间戳；存量旧消息无 createdAt 不猜测、不加前缀。
+   - 验证：`scripts/cdp-verify-time-awareness.mjs` 26/26 PASS（格式/周几/时区/位置段压尾/幂等/连续两轮逐字节一致/多段 assistant 对齐/tool 不加前缀）。
+2. **DeepSeek 搜索服务 → web-search provider** —— ✅ 已落地（2026-10-20 用户验收轮）
+   - 核实（2026-10-20）：**官方 Search API 已上线**，文档 https://api-docs.deepseek.com/zh-cn/guides/search/ ，`POST https://api.deepseek.com/v1/tools/search`（Bearer；query≤128 / count 1..50；返回 results[].snippet/summary 等；另有 Fetch API）。
+   - 实现：Rust `search_deepseek`（summary 优先、空回落 snippet；不请求正文）+ dispatch 分支；前端 SearchProvider `deepseek`、密钥走保管箱 `web-search:deepseek`、设置页卡片、选择器标签。
+   - 验证：cargo check exit 0、`core::web_search` 8 单测绿、tsc/biome 绿；CDP 实盘 dispatch 命中（无 Key 时返回「DeepSeek 需要 API Key…」而非回落内置引擎）。**真实搜索未联网实测（本机无 Key）**，用前需在 设置 → 网络搜索 填 Key。
+3. **模型表 2026-10-20 批次** —— ✅ 已入表（Gemini 4 Argon / MiniMax M3.1 Flash）
+   - `gemini-4-argon`（Google Gemini 4 Argon）：恒思考、thinkingLevel low/medium/high（默认 medium、拒绝 minimal/thinkingBudget）、1M 统一上下文、gpt 视觉放行；long decode（xhigh/max 扩大 maxOutputTokens）未接，随发布版另做。
+   - `minimax-m3.1-flash`（MiniMax M3.1 Flash，发布前匿名代号 **Space Bunny**）：恒思考（disabled/none→400）、reasoning_effort low/medium/high/xhigh/max（默认 max）、1M 上下文、多模态；**顺手补了 MiniMax 请求体分派分支**（此前 minimax-m3/m2.5/h3 三行是死条目）。
+   - 三处副本同步（site/maps + 打包 + Books_Converter 视觉移植），maps-sync-check 绿；冒烟断言已加。**远程热更新未部署**（需 push main 后 EdgeOne 自动重建），当前 dev/打包表已生效。
+4. **本地向量化 / 本地大模型可用性实测与修复**（用户反馈 Ollama 本地向量模型 failed to fetch；仓库从未实测）
+   - 现状：外部嵌入端点已支持 OpenAI 兼容与 Ollama 原生（`/api/embed` 按 URL 尾部识别）；`docs/plans/0-4-1-discussion.md` §3 只有排查清单，无实测结论。
+   - 待办：① 起真实 Ollama（bge-m3）跑「连接自检 → 向量化 → 检索」全链路；② 确认 embedding 请求实际通道（渲染进程 fetch localhost 的 CSP/MixedContent 风险 vs Rust 侧 reqwest）；③ 本地 LLM（Ollama / LM Studio，OpenAI 兼容）补预设 + `/v1/models` 自动发现；④ 错误翻译（ECONNREFUSED → 「Ollama 未启动」类可操作文案）；⑤ 记录维度/模型兼容矩阵与「换模型需全库重建」提示口径。
+
+### ⏸ 搁置（2026-10-20 用户拍板，不排期）
+
+- **Books_Converter 新版本（2.0+）搬进 SageRead 的计划暂缓**：BC 那边准备推进大版本更新（仍在研发摸索阶段），**不急着把新版本搬过来**；
+  当前 SageRead 配套的仍是 BC 1.3.9。注意：**SageRead 模型表移植到 BC（视觉表同步）不属于这条计划，照常维护**（本次 2026-10-20 批次已同步）。
+- **移动端开发整体搁置**：Android 端口、移动端首页/抽屉语义、L2 移动端同步语义等移动端相关事项暂不推进，等主线稳定后再议。
+

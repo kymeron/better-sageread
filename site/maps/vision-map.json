@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14",
+  "updatedAt": "2026-10-20",
   "models": {
     "gpt-6-astra": true,
     "gpt-6-sol": true,
@@ -73,6 +73,7 @@
     "claude-2.1": false,
     "claude-2.0": false,
     "claude-instant-1.2": false,
+    "gemini-4-argon": true,
     "gemini-3.8-flash": true,
     "gemini-3.7-flash": true,
     "gemini-3.6-flash": true,
@@ -210,6 +211,7 @@
     "minimax-m3": true,
     "minimax-m2.5": true,
     "minimax-h3": true,
+    "minimax-m3.1-flash": true,
     "abab6.5s-chat": false,
     "abab5.5-chat": false,
     "ernie-5.0": true,

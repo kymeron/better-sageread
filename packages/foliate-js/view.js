@@ -343,7 +343,20 @@ export class View extends HTMLElement {
     const tocItem = this.#tocProgress?.getProgress(index, range);
     const pageItem = this.#pageProgress?.getProgress(index, range);
     const cfi = this.getCFI(index, range);
-    this.lastLocation = { ...progress, tocItem, pageItem, cfi, range };
+    // 2026-10-20 阅读位置桥：在原字段基础上补 spine 序号 / spine 资源路径 /
+    // 章内 fraction / spine 总数，供 App 侧组装阅读位置（目录缺失时按 spine 兜底定位）。
+    // 原有字段（fraction/tocItem/pageItem/cfi/range）与事件时机保持不变。
+    this.lastLocation = {
+      ...progress,
+      tocItem,
+      pageItem,
+      cfi,
+      range,
+      sectionIndex: index,
+      sectionHref: this.book.sections[index]?.id ?? "",
+      sectionFraction: fraction ?? 0,
+      spineTotal: this.#sectionProgress?.sizes?.length ?? this.book.sections.length,
+    };
     if (reason === "snap" || reason === "page" || reason === "scroll") this.history.replaceState(cfi);
     this.#emit("relocate", this.lastLocation);
   }

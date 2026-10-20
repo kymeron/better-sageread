@@ -231,7 +231,7 @@ function PaperStars({ rating, onRate }: { rating: number; onRate: (rating: numbe
   );
 }
 
-/** 阅读状态徽标（New 主题色 / 进度琥珀 / 已读完绿） */
+/** 阅读状态徽标（New 主题色 / 阅读中 x% 琥珀 / 已读完绿） */
 function PaperStatusBadge({ status }: { status: BookWithStatus["status"] }) {
   if (!status || status.status === "unread") {
     return <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs">New</span>;
@@ -244,9 +244,11 @@ function PaperStatusBadge({ status }: { status: BookWithStatus["status"] }) {
     );
   }
   const percent = status.progressTotal > 0 ? Math.round((status.progressCurrent / status.progressTotal) * 100) : 0;
+  // 论文侧 progressCurrent/Total = 正文字符偏移/字数（PaperReader 落库），阅读中直接显示百分比
+  const percentShown = Math.min(100, Math.max(1, percent));
   return (
     <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-600 text-xs dark:bg-amber-950/50 dark:text-amber-400">
-      {percent > 0 ? `${percent}%` : "阅读中"}
+      {percent > 0 ? `阅读中 ${percentShown}%` : "阅读中"}
     </span>
   );
 }
@@ -292,8 +294,7 @@ function FolderTreeItem({
   const isSelected = selection.kind === "folder" && selection.id === node.id;
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
-  const hoverButtonClass =
-    "rounded p-0.5 text-neutral-400 hover:bg-accent hover:text-accent-foreground";
+  const hoverButtonClass = "rounded p-0.5 text-neutral-400 hover:bg-accent hover:text-accent-foreground";
 
   return (
     <div>
@@ -519,8 +520,7 @@ export default function PapersPage() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
     const isPapersForeground = () =>
-      window.location.hash.replace(/^#/, "").split("?")[0] === "/papers" &&
-      useLayoutStore.getState().isHomeActive;
+      window.location.hash.replace(/^#/, "").split("?")[0] === "/papers" && useLayoutStore.getState().isHomeActive;
     getCurrentWebviewWindow()
       .onDragDropEvent((event) => {
         const payload = event.payload;

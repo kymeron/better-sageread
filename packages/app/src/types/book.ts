@@ -197,9 +197,20 @@ export interface ViewSettings
 
 export interface BookProgress {
   location: string;
+  /** 当前 spine 序号（0-based，foliate relocate 的 section index；目录缺失时按它兜底定位） */
+  sectionIndex: number;
   sectionId: number;
+  /** 当前 spine 资源路径（zip 相对路径，来自 foliate relocate 扩展字段；目录侧栏高亮改用 tocHref） */
   sectionHref: string;
+  /** 当前 TOC 项原始 href（含 #fragment；目录缺失时为空串） */
+  tocHref: string;
   sectionLabel: string;
+  /** 当前章内进度 0..1（foliate relocate 的 fraction） */
+  sectionFraction: number;
+  /** 书籍 spine 总数 */
+  spineTotal: number;
+  /** foliate SectionProgress 的 section 区间（relocate 原样透传；旧数据可能缺省） */
+  section?: { current: number; total: number };
   pageinfo: PageInfo;
   timeinfo: TimeInfo;
   range: Range;
