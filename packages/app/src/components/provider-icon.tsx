@@ -50,6 +50,8 @@ export function ProviderIcon({ providerId, provider, className = "h-4 w-4" }: Pr
     case "qwen":
       // 阿里云百炼（DashScope OpenAI 兼容端点）→ 阿里云平台图标
       return <AlibabaCloud className={className} />;
+    case "ollama":
+      return <Ollama className={className} />;
     case "lmstudio":
       return <LMStudio className={className} />;
     case "doubao":

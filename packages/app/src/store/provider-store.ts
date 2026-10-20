@@ -68,7 +68,7 @@ export const useProviderStore = create<ProviderState>()(
     {
       name: tauriStorageKey.modelProvider,
       storage: createJSONStorage(() => tauriStorage),
-      version: 4,
+      version: 5,
       migrate: (persistedState: any, version: number) => {
         if (version < 1) {
           // v0→v1: 合并新增的预定义提供商（保留用户已有配置不动）
@@ -100,6 +100,56 @@ export const useProviderStore = create<ProviderState>()(
           if (missing.length > 0) {
             persistedState.modelProviders = [...existing, ...missing];
           }
+        }
+        if (version < 5) {
+          // v4→v5: 本地 Ollama 从「自定义提供商」正名为预定义提供商：
+          // 迁移旧 custom-*（名称含 ollama 或 11434 端点）的模型/启用状态到 provider=ollama，
+          // 删除旧条目，并重映射 selectedModel/utilityModel 里的 providerId（保留用户当前选择）。
+          const providers: ModelProvider[] = [...(persistedState.modelProviders ?? [])];
+          const ollamaPredef = predefinedProviders.find((p) => p.provider === "ollama");
+          const legacyOllama = providers.filter(
+            (p) =>
+              p.provider.startsWith("custom-") &&
+              (/ollama/i.test(p.name ?? "") || /:11434(?:\/|$)/.test(p.baseUrl ?? "")),
+          );
+          let ollamaIds = new Map<string, string>();
+          if (ollamaPredef && legacyOllama.length > 0) {
+            const existingIdx = providers.findIndex((p) => p.provider === "ollama");
+            const existingOllama = existingIdx >= 0 ? providers[existingIdx] : null;
+            const mergedModels: ModelProvider["models"] = [...(existingOllama?.models ?? [])];
+            let mergedActive = existingOllama?.active ?? false;
+            let mergedApiKey = existingOllama?.apiKey ?? "";
+            ollamaIds = new Map(legacyOllama.map((p) => [p.provider, "ollama"]));
+            for (const legacy of legacyOllama) {
+              mergedActive = mergedActive || legacy.active;
+              mergedApiKey = mergedApiKey || legacy.apiKey || "";
+              for (const model of legacy.models ?? []) {
+                if (!mergedModels.some((m) => m.id === model.id)) mergedModels.push(model);
+              }
+            }
+            const normalized: ModelProvider = {
+              ...ollamaPredef,
+              active: mergedActive,
+              apiKey: mergedApiKey,
+              models: mergedModels,
+            };
+            const legacyIds = new Set(legacyOllama.map((p) => p.provider));
+            persistedState.modelProviders = providers
+              .filter((p) => !legacyIds.has(p.provider))
+              .map((p) => (p.provider === "ollama" ? normalized : p));
+            if (!persistedState.modelProviders.some((p: ModelProvider) => p.provider === "ollama")) {
+              persistedState.modelProviders.push(normalized);
+            }
+            const remap = (sel: SelectedModel | null) =>
+              sel && ollamaIds.has(sel.providerId) ? { ...sel, providerId: "ollama", providerName: "Ollama" } : sel;
+            persistedState.selectedModel = remap(persistedState.selectedModel ?? null);
+            persistedState.utilityModel = remap(persistedState.utilityModel ?? null);
+          }
+          // 顺带合并其它新增的预定义提供商（如 LM Studio）；同 id 不覆盖
+          const current: ModelProvider[] = persistedState.modelProviders ?? providers;
+          const currentIds = new Set(current.map((p) => p.provider));
+          const missing = predefinedProviders.filter((p) => !currentIds.has(p.provider));
+          if (missing.length > 0) persistedState.modelProviders = [...current, ...missing];
         }
         return persistedState;
       },

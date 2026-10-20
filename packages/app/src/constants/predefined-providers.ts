@@ -112,6 +112,16 @@ export const predefinedProviders: ModelProvider[] = [
   },
   // ==================== 本地服务（OpenAI 兼容，免 Key） ====================
   {
+    // 本地 Ollama：装好并保持服务运行（默认 11434），OpenAI 兼容端点
+    active: false,
+    apiKey: "",
+    name: "Ollama",
+    baseUrl: "http://127.0.0.1:11434/v1",
+    baseUrlHelpUrl: "https://github.com/ollama/ollama/blob/main/docs/openai.md",
+    provider: "ollama",
+    models: [],
+  },
+  {
     // 本地 LM Studio：需在 LM Studio → Developer → Local Server 启动服务（默认 1234）
     active: false,
     apiKey: "",
