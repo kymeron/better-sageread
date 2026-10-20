@@ -11,7 +11,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { type as getOsType } from "@tauri-apps/plugin-os";
-import { ChevronRight, CircuitBoard, Cloud, Info, Pencil, Plus, Server, Trash2, X } from "lucide-react";
+import { ChevronRight, CircuitBoard, Cloud, Pencil, Plus, Server, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -194,7 +194,7 @@ export default function VectorModelManager() {
   } = useLlamaStore();
 
   const [isMacOS, setIsMacOS] = useState(false);
-  const [introOpen, setIntroOpen] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(true);
   // 当前展开的 provider 行（云端默认展开第一个）
   const [expandedId, setExpandedId] = useState<string | null>("siliconflow");
   // 本地部署分区默认折叠（不推荐路径）
@@ -209,6 +209,7 @@ export default function VectorModelManager() {
   const [revectorizeProgress, setRevectorizeProgress] = useState<{ done: number; total: number } | null>(null);
   const revectorizeTaskIdsRef = useRef<Set<string>>(new Set());
   const [editingKeySaved, setEditingKeySaved] = useState(false);
+  const cloudSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [formData, setFormData] = useState<Omit<VectorModelConfig, "id">>({
     name: "",
@@ -670,15 +671,15 @@ export default function VectorModelManager() {
     return (
       <div
         key={preset.id}
-        className={`rounded-lg border ${expanded ? "border-neutral-300" : borderClass} bg-background dark:bg-neutral-800`}
+        className={`rounded-xl border ${expanded ? "border-neutral-300 dark:border-neutral-500" : borderClass} bg-background dark:bg-neutral-800`}
       >
         <button
           type="button"
           onClick={() => setExpandedId(expanded ? null : preset.id)}
-          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+          className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
         >
           <span
-            className={`flex size-7 shrink-0 items-center justify-center rounded-md border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
+            className={`flex size-9 shrink-0 items-center justify-center rounded-lg border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
           >
             <BrandIcon brand={preset.brand} className="size-4" />
           </span>
@@ -702,7 +703,7 @@ export default function VectorModelManager() {
           />
         </button>
         {expanded && (
-          <div className={`space-y-2 border-t ${borderClass} px-3 py-2.5`}>
+          <div className={`space-y-2 border-t ${borderClass} px-3.5 py-3`}>
             {configs.map((model) =>
               isEditingHere && formTarget?.kind === "edit" && formTarget.id === model.id
                 ? renderForm({ mode: "edit", preset })
@@ -724,81 +725,108 @@ export default function VectorModelManager() {
     );
   };
 
+  const brandOfModel = (model: VectorModelConfig): VectorProviderBrand =>
+    ALL_PRESETS.find((preset) => belongsToPreset(preset, model))?.brand ?? "custom";
+  const selectedBrand = selectedModel ? brandOfModel(selectedModel) : "custom";
+  const selectedKind =
+    selectedModel && LOCAL_PRESETS.some((preset) => belongsToPreset(preset, selectedModel)) ? "本地部署" : "云端 API";
+
+  const testSelected = () => {
+    if (selectedModel) void detectModelDimension(selectedModel, "测试中...");
+  };
+  const focusCloudSection = () => {
+    setCloudOpen(true);
+    cloudSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <section className="rounded-lg bg-muted/80 p-4 pt-3">
-      <div className="mb-3 flex items-center justify-between">
-        <h2>向量模型</h2>
+    <div className="space-y-4 text-neutral-800 dark:text-neutral-100">
+      {/* 页头：标题 + 说明 + 全局动作（与模型提供商页同口径） */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2>向量模型</h2>
+          <p className="mt-1.5 max-w-3xl text-neutral-500 text-xs leading-relaxed dark:text-neutral-400">
+            把文字变成向量，支撑语义检索：聊书问答、论文检索、翻译句对齐都依赖它。同时只能启用一个模型，切换后需要重建已有索引。
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {revectorizeProgress ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              title="当前条目完成后停止"
+              onClick={() => {
+                useTaskCenterStore.getState().cancelChannel("book-vectorize");
+                useTaskCenterStore.getState().cancelChannel("paper-vectorize");
+              }}
+            >
+              取消（{revectorizeProgress.done}/{revectorizeProgress.total}）
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => void handleRevectorizeAll()}>
+              全量重建索引
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* 简介（默认折叠，避免占版面） */}
-      <div className="mb-3 rounded-lg border border-neutral-200 bg-background dark:border-neutral-700 dark:bg-neutral-800">
-        <button
-          type="button"
-          onClick={() => setIntroOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-2 text-left"
-        >
-          <span className="flex items-center gap-2 font-medium text-neutral-800 text-xs dark:text-neutral-200">
-            <Info className="size-3.5 text-neutral-500 dark:text-neutral-400" />
-            什么是向量模型？
-          </span>
-          <ChevronRight className={`size-3.5 text-neutral-400 transition-transform ${introOpen ? "rotate-90" : ""}`} />
-        </button>
-        {introOpen && (
-          <div className={`space-y-2 border-t ${borderClass} px-4 py-3 text-neutral-600 text-xs dark:text-neutral-400`}>
-            <p>
-              向量模型把文字转成数字向量，支撑聊书问答、论文语义检索、翻译句词对齐。不配置也能正常阅读，只是没有语义检索能力。
-            </p>
-            <p className="rounded bg-amber-50 px-2 py-1.5 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-              ⚠️ 向量结果与模型绑定：<b>更换模型或维度变化后，已向量化的书库/文献库会全部失效</b>
-              ，需要用新模型重新向量化。
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 当前生效状态 */}
-      <div className={`mb-3 rounded-lg border ${borderClass} bg-background px-4 py-3 dark:bg-neutral-800`}>
+      {/* 当前生效（对应 demo：描边高亮卡片） */}
+      <div
+        className={`rounded-xl border px-4 py-3 ${
+          selectedModel
+            ? "border-amber-300/70 bg-gradient-to-b from-amber-50/70 to-transparent dark:border-amber-800/50 dark:from-amber-950/20"
+            : `${borderClass} bg-background dark:bg-neutral-800`
+        }`}
+      >
         {selectedModel ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-              <CircuitBoard className="size-4 shrink-0 text-green-600 dark:text-green-400" />
-              <span className="truncate text-neutral-800 dark:text-neutral-200">当前模型：{selectedModel.name}</span>
-              {selectedModel.dimension ? (
-                <span className={`shrink-0 text-xs ${mutedText}`}>· {selectedModel.dimension} 维</span>
-              ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-amber-300/60 bg-background dark:border-amber-800/50 dark:bg-neutral-800">
+                <BrandIcon brand={selectedBrand} className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium text-neutral-800 text-sm dark:text-neutral-100">
+                    {selectedModel.name}
+                  </span>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    当前启用
+                  </span>
+                  <span className={badgeClass}>{selectedKind}</span>
+                  {selectedModel.dimension ? <span className={badgeClass}>{selectedModel.dimension} 维</span> : null}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                  已启用 · {hostOf(selectedModel.url) || selectedModel.url}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs ${mutedText}`}>已向量化 {vectorizedCount} 本/篇</span>
-              {revectorizeProgress ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  title="当前条目完成后停止"
-                  onClick={() => {
-                    useTaskCenterStore.getState().cancelChannel("book-vectorize");
-                    useTaskCenterStore.getState().cancelChannel("paper-vectorize");
-                  }}
-                >
-                  取消（{revectorizeProgress.done}/{revectorizeProgress.total}）
-                </Button>
-              ) : (
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void handleRevectorizeAll()}>
-                  全量重新向量化
-                </Button>
-              )}
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-[11px] text-neutral-500 dark:text-neutral-400">已向量化 {vectorizedCount} 项</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={testSelected}
+                disabled={testingId === selectedModel.id}
+              >
+                {testingId === selectedModel.id ? "测试中…" : "测试连接"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={focusCloudSection}>
+                更换模型
+              </Button>
             </div>
           </div>
         ) : (
-          <div className={`flex items-center gap-2 text-sm ${mutedText}`}>
+          <div className="flex items-center gap-2 text-neutral-500 text-sm dark:text-neutral-400">
             <CircuitBoard className="size-4" />
-            尚未启用向量模型——在下方云端 API 里选一个服务商配置 Key 并启用即可
+            尚未启用向量模型——在下方「云端 API」里选一家配置 Key 并启用即可
           </div>
         )}
       </div>
 
       {isMacOS && (
-        <div className="mb-3 flex items-start justify-between rounded-lg border border-neutral-200 bg-background px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800">
+        <div className="flex items-start justify-between rounded-xl border border-neutral-200 bg-background px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800">
           <div>
             <div className="text-neutral-800 text-xs dark:text-neutral-200">使用外部向量模型</div>
             <div className={`mt-0.5 ${mutedText}`}>关闭则使用应用内置的 Llama.cpp 本地嵌入服务（仅 macOS）</div>
@@ -808,90 +836,104 @@ export default function VectorModelManager() {
       )}
 
       {vectorModelEnabled && (
-        <div className="space-y-4">
-          {/* 云端 API（推荐） */}
-          <div>
-            <div className="mb-2 flex items-baseline gap-2">
-              <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">云端 API</span>
-              <span className={`text-[11px] ${mutedText}`}>推荐 · 填 Key 后保存并启用，列表点击行展开</span>
-            </div>
-            <div className="space-y-2">{CLOUD_PRESETS.map(renderProviderRow)}</div>
-
-            {/* 自定义端点与其他配置 */}
-            <div className={`mt-2 rounded-lg border ${borderClass} bg-background dark:bg-neutral-800`}>
-              <button
-                type="button"
-                onClick={() => setExpandedId(expandedId === "custom" ? null : "custom")}
-                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
-              >
-                <span
-                  className={`flex size-7 items-center justify-center rounded-md border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
-                >
-                  <Plus className="size-4 text-neutral-500" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">自定义端点</span>
-                  <span className={`ml-2 text-[11px] ${mutedText}`}>任意 OpenAI 兼容 /v1/embeddings</span>
-                </span>
-                <ChevronRight
-                  className={`size-4 shrink-0 text-neutral-400 transition-transform ${expandedId === "custom" ? "rotate-90" : ""}`}
-                />
-              </button>
-              {expandedId === "custom" && (
-                <div className={`space-y-2 border-t ${borderClass} px-3 py-2.5`}>
-                  {customConfigs.map((model) =>
-                    formTarget?.kind === "edit" && formTarget.id === model.id
-                      ? renderForm({ mode: "edit" })
-                      : renderConfigRow(model),
-                  )}
-                  {formTarget?.kind === "custom"
-                    ? renderForm({ mode: "custom" })
-                    : !(formTarget?.kind === "edit" && customConfigs.some((m) => m.id === formTarget.id)) && (
-                        <button
-                          type="button"
-                          onClick={openCustomForm}
-                          className="flex w-full items-center justify-center gap-1 rounded-md border border-neutral-300 border-dashed py-1.5 text-[11px] text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                        >
-                          <Plus size={12} /> 添加自定义端点
-                        </button>
-                      )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 本地部署（默认折叠，不推荐） */}
-          <div className={`rounded-lg border ${borderClass} bg-background dark:bg-neutral-800`}>
+        <div className="space-y-5">
+          {/* 云端 API（推荐；与本地部署同 level 的分区头，默认展开） */}
+          <div ref={cloudSectionRef} id="vector-cloud-providers" className="space-y-2">
             <button
               type="button"
-              onClick={() => setLocalOpen((v) => !v)}
-              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+              onClick={() => setCloudOpen((v) => !v)}
+              className="flex w-full items-start justify-between gap-3 text-left"
             >
-              <Server className="size-4 shrink-0 text-neutral-500" />
-              <span className="min-w-0 flex-1">
-                <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">本地部署</span>
-                <span className={`ml-2 text-[11px] ${mutedText}`}>
-                  进阶（可选）· 不推荐：手机/平板无法本地部署向量模型，移动端请用云端 API
-                </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold text-neutral-800 text-sm dark:text-neutral-100">云端 API</span>
+                <span className={mutedText}>推荐 · 选择服务商 → 填 Key → 保存并启用；条目默认折叠，点击展开</span>
               </span>
               <ChevronRight
-                className={`size-4 shrink-0 text-neutral-400 transition-transform ${localOpen ? "rotate-90" : ""}`}
+                className={`mt-0.5 size-4 shrink-0 text-neutral-400 transition-transform ${cloudOpen ? "rotate-90" : ""}`}
               />
             </button>
-            {localOpen && (
-              <div className="space-y-2 border-neutral-200 border-t px-3 py-2.5 dark:border-neutral-700">
-                {LOCAL_PRESETS.map(renderProviderRow)}
+            {cloudOpen && (
+              <div className="space-y-2">
+                {CLOUD_PRESETS.map(renderProviderRow)}
+                {/* 自定义端点与其他配置 */}
+                <div
+                  className={`rounded-xl border ${expandedId === "custom" ? "border-neutral-300 dark:border-neutral-500" : borderClass} bg-background dark:bg-neutral-800`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(expandedId === "custom" ? null : "custom")}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
+                  >
+                    <span
+                      className={`flex size-9 shrink-0 items-center justify-center rounded-lg border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
+                    >
+                      <Plus className="size-4 text-neutral-500" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">自定义端点</span>
+                        <span className={badgeClass}>OpenAI 兼容</span>
+                      </span>
+                      <span className={`mt-0.5 block truncate ${mutedText}`}>
+                        任意兼容 /v1/embeddings 的服务（llama.cpp server / TEI / 其它云厂商）
+                      </span>
+                    </span>
+                    <ChevronRight
+                      className={`size-4 shrink-0 text-neutral-400 transition-transform ${expandedId === "custom" ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                  {expandedId === "custom" && (
+                    <div className={`space-y-2 border-t ${borderClass} px-3.5 py-3`}>
+                      {customConfigs.map((model) =>
+                        formTarget?.kind === "edit" && formTarget.id === model.id
+                          ? renderForm({ mode: "edit" })
+                          : renderConfigRow(model),
+                      )}
+                      {formTarget?.kind === "custom"
+                        ? renderForm({ mode: "custom" })
+                        : !(formTarget?.kind === "edit" && customConfigs.some((m) => m.id === formTarget.id)) && (
+                            <button
+                              type="button"
+                              onClick={openCustomForm}
+                              className="flex w-full items-center justify-center gap-1 rounded-lg border border-neutral-300 border-dashed py-2 text-[11px] text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                            >
+                              <Plus size={12} /> 添加自定义端点
+                            </button>
+                          )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
 
+          {/* 本地部署（与云端同 level 的分区头；默认折叠 + 不推荐说明） */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setLocalOpen((v) => !v)}
+              className="flex w-full items-start justify-between gap-3 text-left"
+            >
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold text-neutral-800 text-sm dark:text-neutral-100">本地部署</span>
+                <span className={mutedText}>
+                  进阶（可选）· 不推荐：手机/平板无法本地部署向量模型，移动端场景请用云端 API
+                </span>
+              </span>
+              <ChevronRight
+                className={`mt-0.5 size-4 shrink-0 text-neutral-400 transition-transform ${localOpen ? "rotate-90" : ""}`}
+              />
+            </button>
+            {localOpen && <div className="space-y-2">{LOCAL_PRESETS.map(renderProviderRow)}</div>}
+          </div>
+
           {/* 换模警示 */}
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800 text-xs dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            ⚠️ 更换向量模型后，已向量化的 {vectorizedCount}{" "}
-            本书/论文将全部失效，需要用新模型重新向量化后才能继续语义检索。维度以实际探测结果为准，无需手填；同时只能启用一个模型。
+          <div className="rounded-xl border border-red-300/50 bg-red-50/50 px-4 py-3 text-red-700 text-xs dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+            <b>切换向量模型后，已向量化的 {vectorizedCount} 本书/论文将全部失效</b>
+            ，需要用新模型重建索引才能继续语义检索。维度以实际探测结果为准，无需手填；同时只能启用一个模型。
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
