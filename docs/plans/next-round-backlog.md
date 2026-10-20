@@ -428,7 +428,22 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
    - **LM Studio 支持**：品牌图标 + `127.0.0.1:1234` 端点识别；获取模型列表时用其 `/api/v0/models` 的 type 过滤掉 embedding 模型；向量模型预设新增 LM Studio（`/v1/embeddings`、免 Key）。
    - **Ollama 获取模型列表只留对话模型**：用原生 `/api/show` 的 capabilities（completion/tools）过滤，嵌入模型（embeddinggemma 等）不再混入聊天模型列表；过滤失败/为空回退原列表。
    - Ollama 向量模型预设与本地部署指引从 `bge-m3` 更新为 **`embeddinggemma-2:440m`**（768 维，约 0.7GB，2026-10 新版），并补 LM Studio 指引。
-   - **向量模型页改版 demo**：`docs/mockups/vector-model-page-demo.html` + `:png` 截图（仿模型提供商页：当前生效卡片、本地/云端分区、预填 URL、获取模型列表、单选启用、换模警示与维度说明）——**待用户评审后再落地实现**。
+   - **向量模型页改版 demo**：`docs/mockups/vector-model-page-demo.html` + `:png` 截图（v2，用户评审通过，按反馈调整）：
+     · **云端 API 在前**（推荐），本地部署收进「进阶（可选）」折叠区并明示「不推荐：手机/平板无法本地部署向量模型」——移动端场景统一走云端 Key；
+     · 列表默认折叠（云端分区展开、各提供商行折叠，点行展开配置），避免长列表；
+     · 每个云端行展开后有 **API Key 填写位**（已保存显示掩码 + 管理 Key；未配置给获取链接）、预填服务地址、模型下拉、维度自动探测；
+     · 品牌图标尽量用真实 SVG（OpenAI / 阿里云 / 智谱 / Ollama / LM Studio；硅基流动无开源品牌图标，用 SF 渐变色块代替）；
+     · 单选启用（同时只一个）、换模警示 + 全量重建入口、维度说明保留。
+     · **待用户确认后按 v2 落地真实页面**。
+
+## 🆕 2026-10-21 Agent 读图 / 跨文献 / 任意位置读起 —— 📋 调研完成（未排期，用户："不急着干"）
+
+详见 `docs/audits/agent-figure-and-cross-document-capabilities.md`。结论摘要：
+
+- **读图**：`getFigures` 只能列当前论文图注/路径（不能看图）；`readImage` 只支持聊天附件 `attachment://`；无图级索引、无跨文献找图/读图。模型"自己找图并读图"目前**不支持**。快速补法 P0：图表 tab 加「问 Agent 这张图」（复用附件管线）+ central 补带 paper_id 的论文正文工具。
+- **跨文献上下文**：`paperSearch` 可跨论文（用户选定范围/全库），但 `paperContext` 只扩同一篇内邻块；无跨论文上下文合并；书侧全部限定当前书、无跨书检索。
+- **任意位置读起**：单篇内完全支持——书 `readBookSection`（标题/小节号 + startOffset 续读）、论文 `getPaperToc → readPaperSection`（标题/锚点 id + offset）、`readPaperFull`、`readAtReadingPosition`；跨文献"打开某篇 5.8 节"无直接工具（只能 search → md_file_path → readLocalFile 绕）。
+- **建议优先级**：P0 图表 tab 问 Agent + central 论文正文工具；P1 图注 embedding 索引 + `searchFigures` + `readFigure` + 跨文献上下文/定位工具；P2 跨书全局检索（成本大）。
 
 ### ⏸ 搁置（2026-10-20 用户拍板，不排期）
 
