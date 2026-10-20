@@ -93,7 +93,7 @@ export const predefinedProviders: ModelProvider[] = [
   {
     active: false,
     apiKey: "",
-    name: "阿里百炼 (Qwen)",
+    name: "阿里云百炼",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyHelpUrl: "https://bailian.console.aliyun.com/#/api-key",
     baseUrlHelpUrl: "https://help.aliyun.com/zh/model-studio/compatibility-with-openai",

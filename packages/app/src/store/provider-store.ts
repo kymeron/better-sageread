@@ -68,7 +68,7 @@ export const useProviderStore = create<ProviderState>()(
     {
       name: tauriStorageKey.modelProvider,
       storage: createJSONStorage(() => tauriStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: any, version: number) => {
         if (version < 1) {
           // v0→v1: 合并新增的预定义提供商（保留用户已有配置不动）
@@ -84,6 +84,12 @@ export const useProviderStore = create<ProviderState>()(
           const domesticIds = new Set(["zhipu", "kimi", "xiaomi", "qwen", "doubao"]);
           persistedState.modelProviders = (persistedState.modelProviders ?? []).map((p: ModelProvider) =>
             domesticIds.has(p.provider) && !p.apiKey?.trim() ? { ...p, active: false } : p,
+          );
+        }
+        if (version < 3) {
+          // v2→v3: 阿里百炼(Qwen) 正名为「阿里云百炼」，旧名迁移（provider id 仍为 qwen，避免拆配置）
+          persistedState.modelProviders = (persistedState.modelProviders ?? []).map((p: ModelProvider) =>
+            p.provider === "qwen" && /^阿里百炼/.test(p.name ?? "") ? { ...p, name: "阿里云百炼" } : p,
           );
         }
         return persistedState;

@@ -1,4 +1,5 @@
 import {
+  AlibabaCloud,
   Anthropic,
   ChatGLM,
   DeepSeek,
@@ -10,7 +11,6 @@ import {
   Ollama,
   OpenAI,
   OpenRouter,
-  Qwen,
   XiaomiMiMo,
 } from "@/components/icons";
 import { isLMStudioEndpoint, isOllamaEndpoint } from "@/utils/provider-url";
@@ -48,7 +48,8 @@ export function ProviderIcon({ providerId, provider, className = "h-4 w-4" }: Pr
     case "xiaomi":
       return <XiaomiMiMo className={className} />;
     case "qwen":
-      return <Qwen className={className} />;
+      // 阿里云百炼（DashScope OpenAI 兼容端点）→ 阿里云平台图标
+      return <AlibabaCloud className={className} />;
     case "doubao":
       return <Doubao className={className} />;
     default:

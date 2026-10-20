@@ -1,7 +1,7 @@
+import { AlibabaCloud, ChatGLM, LMStudio, Ollama, OpenAI } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getBooksWithStatus } from "@/services/book-service";
 import { secretDelete, secretHas, secretSet } from "@/services/secret-service";
 import { type VectorModelConfig, useLlamaStore } from "@/store/llama-store";
@@ -11,85 +11,174 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { type as getOsType } from "@tauri-apps/plugin-os";
-import { ChevronDown, CircuitBoard, Cloud, Edit2, Info, Plus, Server, Trash2, X } from "lucide-react";
+import { ChevronRight, CircuitBoard, Cloud, Info, Pencil, Plus, Server, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-/** G2：接入方式预设——点击自动填充添加表单（本地部署免 Key，云端需 Key） */
-const PRESETS: {
+type VectorProviderBrand =
+  | "openai"
+  | "bailian"
+  | "zhipu"
+  | "siliconflow"
+  | "ollama"
+  | "lmstudio"
+  | "xinference"
+  | "custom";
+
+interface VectorProviderPreset {
   id: string;
-  label: string;
-  badge: string;
   name: string;
+  desc: string;
+  brand: VectorProviderBrand;
+  kind: "cloud" | "local";
   url: string;
   modelId: string;
   needKey: boolean;
-  desc: string;
-}[] = [
-  {
-    id: "ollama",
-    label: "Ollama",
-    badge: "本地部署",
-    name: "Ollama 本地模型",
-    url: "http://127.0.0.1:11434/api/embed",
-    modelId: "embeddinggemma-2:440m",
-    needKey: false,
-    desc: "完全离线，免申请，隐私最好（推荐 embeddinggemma-2，768 维）",
-  },
-  {
-    id: "lmstudio",
-    label: "LM Studio",
-    badge: "本地部署",
-    name: "LM Studio 本地模型",
-    url: "http://127.0.0.1:1234/v1/embeddings",
-    modelId: "",
-    needKey: false,
-    desc: "OpenAI 兼容端点，免 API Key（模型名按 LM Studio 里下载的填）",
-  },
-  {
-    id: "xinference",
-    label: "Xinference",
-    badge: "本地部署",
-    name: "Xinference 本地模型",
-    url: "http://127.0.0.1:9997/v1/embeddings",
-    modelId: "BAAI/bge-m3",
-    needKey: false,
-    desc: "本地服务，OpenAI 兼容端点",
-  },
+  applyUrl?: string;
+  commonModels?: string[];
+  badge: string;
+}
+
+/** 云端 API 预设（推荐路径；移动端只能走云端） */
+const CLOUD_PRESETS: VectorProviderPreset[] = [
   {
     id: "siliconflow",
-    label: "硅基流动",
-    badge: "云端",
-    name: "硅基流动 bge-m3",
+    name: "硅基流动",
+    desc: "国内直连、速度较快，有免费额度，适合先试用语义检索。",
+    brand: "siliconflow",
+    kind: "cloud",
     url: "https://api.siliconflow.cn/v1/embeddings",
     modelId: "BAAI/bge-m3",
     needKey: true,
-    desc: "有免费额度，速度快",
+    applyUrl: "https://cloud.siliconflow.cn",
+    commonModels: ["BAAI/bge-m3", "Qwen/Qwen3-Embedding-0.6B", "BAAI/bge-large-zh-v1.5"],
+    badge: "有免费额度",
   },
   {
-    id: "openai-compatible",
-    label: "自定义端点",
-    badge: "云端/本地",
-    name: "",
-    url: "",
-    modelId: "",
+    id: "openai",
+    name: "OpenAI",
+    desc: "text-embedding 系列，英文与多语检索稳定，按量计费。",
+    brand: "openai",
+    kind: "cloud",
+    url: "https://api.openai.com/v1/embeddings",
+    modelId: "text-embedding-3-large",
     needKey: true,
-    desc: "任意 OpenAI 兼容 /v1/embeddings",
+    applyUrl: "https://platform.openai.com/api-keys",
+    commonModels: ["text-embedding-3-large", "text-embedding-3-small", "text-embedding-ada-002"],
+    badge: "云端 API",
+  },
+  {
+    id: "bailian",
+    name: "阿里云百炼",
+    desc: "qwen3-embedding / text-embedding 系列，中文检索表现好，有免费额度。",
+    brand: "bailian",
+    kind: "cloud",
+    url: "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+    modelId: "text-embedding-v4",
+    needKey: true,
+    applyUrl: "https://bailian.console.aliyun.com",
+    commonModels: ["text-embedding-v4", "text-embedding-v3", "qwen3-embedding-0.6b"],
+    badge: "云端 API",
+  },
+  {
+    id: "zhipu",
+    name: "智谱 BigModel",
+    desc: "embedding-3（2048 维），国内直连，按量计费。",
+    brand: "zhipu",
+    kind: "cloud",
+    url: "https://open.bigmodel.cn/api/paas/v4/embeddings",
+    modelId: "embedding-3",
+    needKey: true,
+    applyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
+    commonModels: ["embedding-3"],
+    badge: "云端 API",
   },
 ];
 
-/** G1：云端 Key 申请入口（外链走 plugin-opener） */
-const APPLY_LINKS: { label: string; url: string; note: string }[] = [
-  { label: "硅基流动", url: "https://cloud.siliconflow.cn", note: "有免费额度" },
-  { label: "OpenAI", url: "https://platform.openai.com/api-keys", note: "text-embedding 系列" },
-  { label: "阿里云百炼", url: "https://bailian.console.aliyun.com", note: "qwen3-embedding 系列" },
+/** 本地部署预设（进阶，折叠在云端之后；不推荐给普通用户——移动端无法本地部署） */
+const LOCAL_PRESETS: VectorProviderPreset[] = [
+  {
+    id: "ollama",
+    name: "Ollama 本地",
+    desc: "完全离线、免 Key、隐私最好；桌面端进阶用户可用。",
+    brand: "ollama",
+    kind: "local",
+    url: "http://127.0.0.1:11434/api/embed",
+    modelId: "embeddinggemma-2:440m",
+    needKey: false,
+    commonModels: ["embeddinggemma-2:440m", "bge-m3", "qwen3-embedding:0.6b"],
+    badge: "本地部署",
+  },
+  {
+    id: "lmstudio",
+    name: "LM Studio",
+    desc: "OpenAI 兼容端点，免 Key；模型名按 LM Studio 里下载的填。",
+    brand: "lmstudio",
+    kind: "local",
+    url: "http://127.0.0.1:1234/v1/embeddings",
+    modelId: "",
+    needKey: false,
+    commonModels: ["nomic-embed-text-v2-moe", "qwen3-embedding-0.6b"],
+    badge: "本地部署",
+  },
+  {
+    id: "xinference",
+    name: "Xinference",
+    desc: "自托管推理服务，OpenAI 兼容端点，适合多模型统一管理。",
+    brand: "xinference",
+    kind: "local",
+    url: "http://127.0.0.1:9997/v1/embeddings",
+    modelId: "BAAI/bge-m3",
+    needKey: false,
+    commonModels: ["BAAI/bge-m3"],
+    badge: "本地部署",
+  },
 ];
 
-/** 统计已向量化条目数（书籍+论文同表；G3 现状展示与 G1-3 重建后刷新复用） */
+const ALL_PRESETS = [...CLOUD_PRESETS, ...LOCAL_PRESETS];
+
+/** URL host 口径判断配置属于哪个预设（用户可能改过端点路径，仍归到同 host） */
+const hostOf = (url?: string) => {
+  try {
+    return new URL((url ?? "").trim()).host.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+const belongsToPreset = (preset: VectorProviderPreset, model: VectorModelConfig) =>
+  !!hostOf(preset.url) && hostOf(preset.url) === hostOf(model.url);
+
+function BrandIcon({ brand, className = "size-4" }: { brand: VectorProviderBrand; className?: string }) {
+  switch (brand) {
+    case "openai":
+      return <OpenAI className={className} />;
+    case "bailian":
+      return <AlibabaCloud className={className} />;
+    case "zhipu":
+      return <ChatGLM className={className} />;
+    case "ollama":
+      return <Ollama className={className} />;
+    case "lmstudio":
+      return <LMStudio className={className} />;
+    case "siliconflow":
+      return <Cloud className={className} />;
+    case "xinference":
+      return <Server className={className} />;
+    default:
+      return <Plus className={className} />;
+  }
+}
+
+/** 统计已向量化条目数（书籍+论文同表；换模警示与状态卡复用） */
 async function countVectorized(): Promise<number> {
   const books = await getBooksWithStatus({ limit: 1000 });
   return books.filter((b) => b.status?.metadata?.vectorization?.status === "success").length;
 }
+
+const badgeClass =
+  "rounded-full border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-600 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-300";
+const mutedText = "text-neutral-500 text-[11px] dark:text-neutral-400";
+const borderClass = "border-neutral-200 dark:border-neutral-700";
 
 export default function VectorModelManager() {
   const {
@@ -105,20 +194,21 @@ export default function VectorModelManager() {
   } = useLlamaStore();
 
   const [isMacOS, setIsMacOS] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [introOpen, setIntroOpen] = useState(false);
+  // 当前展开的 provider 行（云端默认展开第一个）
+  const [expandedId, setExpandedId] = useState<string | null>("siliconflow");
+  // 本地部署分区默认折叠（不推荐路径）
+  const [localOpen, setLocalOpen] = useState(false);
+  // 表单目标：预设配置 / 编辑已有配置 / 自定义端点
+  const [formTarget, setFormTarget] = useState<
+    { kind: "preset"; presetId: string } | { kind: "edit"; id: string } | { kind: "custom" } | null
+  >(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, string>>({});
-  // G1：介绍区折叠（默认展开一次引导，用户可收起）
-  const [introOpen, setIntroOpen] = useState(true);
-  // G2：本地部署指引折叠
-  const [localGuideOpen, setLocalGuideOpen] = useState(false);
-  // G3：已向量化条目数（换模型警示用）
   const [vectorizedCount, setVectorizedCount] = useState(0);
-  // G1-3：全量重新向量化进度（null = 空闲；任务在 task-center 通道执行，此处只投影本批进度）
   const [revectorizeProgress, setRevectorizeProgress] = useState<{ done: number; total: number } | null>(null);
-  // 本批入队的 taskId 集（进度与收尾统计只数本批，不混入其它来源的同通道任务）
   const revectorizeTaskIdsRef = useRef<Set<string>>(new Set());
+  const [editingKeySaved, setEditingKeySaved] = useState(false);
 
   const [formData, setFormData] = useState<Omit<VectorModelConfig, "id">>({
     name: "",
@@ -127,46 +217,31 @@ export default function VectorModelManager() {
     apiKey: "",
     description: "",
   });
-  // 编辑态：keyring 中是否已有该模型的密钥（用于「已保存 ·•••」提示，与其他设置项文案一致）
-  const [editingKeySaved, setEditingKeySaved] = useState(false);
 
   useEffect(() => {
     const osType = getOsType();
     const isMac = osType === "macos";
     setIsMacOS(isMac);
-    if (!isMac && !vectorModelEnabled) {
-      setVectorModelEnabled(true);
-    }
+    if (!isMac && !vectorModelEnabled) setVectorModelEnabled(true);
   }, [vectorModelEnabled, setVectorModelEnabled]);
 
-  // G3：统计已向量化条目数（书籍+论文同表）
   useEffect(() => {
     countVectorized()
       .then(setVectorizedCount)
       .catch(() => {});
   }, []);
 
-  const labelClass = "block mb-2 text-sm text-neutral-800 dark:text-neutral-200";
+  const selectedModel = vectorModels.find((m) => m.id === selectedVectorModelId);
+  const customConfigs = vectorModels.filter((model) => !ALL_PRESETS.some((preset) => belongsToPreset(preset, model)));
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      url: "",
-      modelId: "",
-      apiKey: "",
-      description: "",
-    });
-    setShowAddForm(false);
-    setEditingId(null);
+    setFormData({ name: "", url: "", modelId: "", apiKey: "", description: "" });
+    setFormTarget(null);
     setEditingKeySaved(false);
   };
 
-  // G2：预设填充——打开添加表单并预填字段
-  const applyPreset = (presetId: string) => {
-    const preset = PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setEditingId(null);
-    setEditingKeySaved(false);
+  /** 打开预设配置表单（自动展开对应 provider 行） */
+  const openPresetForm = (preset: VectorProviderPreset) => {
     setFormData({
       name: preset.name,
       url: preset.url,
@@ -174,37 +249,19 @@ export default function VectorModelManager() {
       apiKey: "",
       description: preset.desc,
     });
-    setShowAddForm(true);
+    setFormTarget({ kind: "preset", presetId: preset.id });
+    setEditingKeySaved(false);
+    setExpandedId(preset.id);
+    if (preset.kind === "local") setLocalOpen(true);
   };
 
-  const handleAdd = async () => {
-    if (!formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) {
-      toast.error("请填写必填字段：名称、URL、模型ID");
-      return;
-    }
-
-    const newModel: VectorModelConfig = {
-      id: `model-${Date.now()}`,
-      ...formData,
-    };
-
-    // 批次 A：apiKey 存入 keyring（vector-model:{id}），内存保留真值供请求
-    if (formData.apiKey.trim()) {
-      try {
-        await secretSet("vector-model", newModel.id, formData.apiKey.trim());
-      } catch (error) {
-        toast.error(`密钥保存失败：${error instanceof Error ? error.message : String(error)}`);
-        return;
-      }
-    }
-
-    addVectorModel(newModel);
-    toast.success(`已添加模型配置：${formData.name}，建议点「测试」验证连通性`);
-    resetForm();
+  const openCustomForm = () => {
+    setFormData({ name: "", url: "", modelId: "", apiKey: "", description: "" });
+    setFormTarget({ kind: "custom" });
+    setEditingKeySaved(false);
   };
 
   const startEdit = (model: VectorModelConfig) => {
-    // 批次 A：不回显已保存的 key，留空表示保留原密钥
     setFormData({
       name: model.name,
       url: model.url,
@@ -212,21 +269,70 @@ export default function VectorModelManager() {
       apiKey: "",
       description: model.description || "",
     });
-    setEditingId(model.id);
+    setFormTarget({ kind: "edit", id: model.id });
     setEditingKeySaved(false);
+    const preset = ALL_PRESETS.find((p) => belongsToPreset(p, model));
+    if (preset) {
+      setExpandedId(preset.id);
+      if (preset.kind === "local") setLocalOpen(true);
+    }
     secretHas("vector-model", model.id)
-      .then((has) => setEditingKeySaved(has))
+      .then(setEditingKeySaved)
       .catch(() => {});
   };
 
+  /** 保存新配置（预设/自定义共用），返回新配置 */
+  const saveNewModel = async (): Promise<VectorModelConfig | null> => {
+    if (!formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) {
+      toast.error("请填写必填字段：名称、URL、模型ID");
+      return null;
+    }
+    const newModel: VectorModelConfig = { id: `model-${Date.now()}`, ...formData };
+    if (formData.apiKey.trim()) {
+      try {
+        await secretSet("vector-model", newModel.id, formData.apiKey.trim());
+      } catch (error) {
+        toast.error(`密钥保存失败：${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      }
+    }
+    addVectorModel(newModel);
+    return newModel;
+  };
+
+  /** 启用（单选）——换模型且有存量向量库时强警示 */
+  const enableModel = async (model: VectorModelConfig) => {
+    const switching = selectedVectorModelId && selectedVectorModelId !== model.id;
+    if (switching && vectorizedCount > 0) {
+      const confirmed = await ask(
+        `切换到「${model.name}」后，已向量化的 ${vectorizedCount} 本书/论文将全部失效，需要用新模型重新向量化后才能继续语义检索。\n\n确定切换吗？`,
+        { title: "切换向量模型", kind: "warning" },
+      );
+      if (!confirmed) return;
+    }
+    setSelectedVectorModelId(model.id);
+    if (!model.dimension) await detectModelDimension(model, "检测维度中...");
+  };
+
+  /** 预设保存并启用：保存 → 探测维度 → 启用 */
+  const savePresetAndEnable = async () => {
+    const created = await saveNewModel();
+    if (!created) return;
+    resetForm();
+    toast.success(`已保存配置：${created.name}，正在测试连通性…`);
+    await detectModelDimension(created, "测试中...");
+    const latest = useLlamaStore.getState().vectorModels.find((m) => m.id === created.id) ?? created;
+    await enableModel(latest);
+  };
+
   const handleEdit = async () => {
-    if (!editingId || !formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) {
+    if (formTarget?.kind !== "edit") return;
+    if (!formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) {
       toast.error("请填写必填字段");
       return;
     }
-
+    const editingId = formTarget.id;
     if (formData.apiKey.trim()) {
-      // 填了新 key：更新 keyring + 内存
       try {
         await secretSet("vector-model", editingId, formData.apiKey.trim());
       } catch (error) {
@@ -235,12 +341,18 @@ export default function VectorModelManager() {
       }
       updateVectorModel(editingId, formData);
     } else {
-      // 留空：保留原密钥（内存中的值不动）
       const { apiKey: _apiKey, ...rest } = formData;
       updateVectorModel(editingId, rest);
     }
     toast.success(`已更新模型配置：${formData.name}`);
     resetForm();
+  };
+
+  const handleCustomSave = async () => {
+    const created = await saveNewModel();
+    if (!created) return;
+    resetForm();
+    toast.success(`已添加模型配置：${created.name}，可在下方启用`);
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -249,7 +361,6 @@ export default function VectorModelManager() {
         title: "确认删除",
         kind: "warning",
       });
-
       if (confirmed) {
         deleteVectorModel(id);
         await secretDelete("vector-model", id).catch(() => {});
@@ -264,48 +375,17 @@ export default function VectorModelManager() {
     setTestingId(model.id);
     setTestResults((prev) => ({ ...prev, [model.id]: statusMessage }));
     const testUrl = normalizeEmbeddingsUrl(model.url);
-
     try {
       const isOllama = testUrl.endsWith("/api/embed");
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      if (model.apiKey.trim()) {
-        headers.Authorization = `Bearer ${model.apiKey}`;
-      }
-
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (model.apiKey.trim()) headers.Authorization = `Bearer ${model.apiKey}`;
       const requestBody = isOllama
-        ? {
-            model: model.modelId,
-            input: testText || "测试文本",
-          }
-        : {
-            input: [testText || "测试文本"],
-            model: model.modelId,
-            encoding_format: "float",
-          };
-
-      // CORS 修复（2026-10-20）：正式版 Windows 的页面 Origin 是 http://tauri.localhost，
-      // Ollama 默认 CORS 白名单不含它 → 浏览器 fetch 直接 Failed to fetch（dev 的
-      // http://localhost:1420 恰好在白名单里，故只会在正式版复现）。改走 plugin-http
-      // （Rust 侧出网，不带 Origin，天然绕 CORS；capabilities 已放通 http://*:*）。
-      const res = await tauriFetch(testUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
+        ? { model: model.modelId, input: testText || "测试文本" }
+        : { input: [testText || "测试文本"], model: model.modelId, encoding_format: "float" };
+      const res = await tauriFetch(testUrl, { method: "POST", headers, body: JSON.stringify(requestBody) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       const json = await res.json();
-
       const len = isOllama ? (json?.embeddings?.[0]?.length ?? 0) : (json?.data?.[0]?.embedding?.length ?? 0);
-
-      // G3：维度变化警示（硅基流动维度变更事件防御）
       const prevDimension = model.dimension;
       updateVectorModel(model.id, { dimension: len });
       let msg = `连接成功 | 维度: ${len}`;
@@ -315,7 +395,6 @@ export default function VectorModelManager() {
       setTestResults((prev) => ({ ...prev, [model.id]: msg }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // 错误翻译：本地服务最常见的失败是"没启动/端口不通"，原始 fetch 报错无信息量
       const isLocalTarget = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/)/i.test(testUrl);
       const connectionFailed =
         /failed to fetch|error sending request|connection refused|ECONNREFUSED|actively refused/i.test(message);
@@ -329,36 +408,6 @@ export default function VectorModelManager() {
     }
   };
 
-  const testModel = async (model: VectorModelConfig) => {
-    await detectModelDimension(model, "测试中...");
-  };
-
-  const handleModelSelect = async (model: VectorModelConfig, checked: boolean) => {
-    if (checked) {
-      // G3：换模型且有存量向量库 → 强警示（向量与模型绑定，换模型即全部失效）
-      const switching = selectedVectorModelId && selectedVectorModelId !== model.id;
-      if (switching && vectorizedCount > 0) {
-        const confirmed = await ask(
-          `切换到「${model.name}」后，已向量化的 ${vectorizedCount} 本书/论文将全部失效，需要用新模型重新向量化后才能继续语义检索。\n\n确定切换吗？`,
-          { title: "切换向量模型", kind: "warning" },
-        );
-        if (!confirmed) return;
-      }
-      setSelectedVectorModelId(model.id);
-      if (!model.dimension) {
-        await detectModelDimension(model, "检测维度中...");
-      }
-    } else {
-      setSelectedVectorModelId(null);
-    }
-  };
-
-  /**
-   * G1-3：全量重新向量化——换模型/维度变化后旧向量全部失效，用当前模型逐条重建。
-   * P2-2/P2-3：逐条入 task-center 通道（图书→book-vectorize，论文→paper-vectorize；通道内串行），
-   * 通道幂等不变（书籍删库重建、论文按 paper_id 先删后插）；同条目在队/在跑由队列拒入并计数跳过，
-   * 不再与 book-item / AI vectorizeBook 双入口并发打架。
-   */
   const handleRevectorizeAll = async () => {
     if (revectorizeProgress) return;
     const all = await getBooksWithStatus({ limit: 1000 }).catch(() => []);
@@ -388,14 +437,11 @@ export default function VectorModelManager() {
       toast.info(`没有新条目可入队${skipped > 0 ? `（${skipped} 个已在队列中或冲突跳过）` : ""}`);
       return;
     }
-    if (skipped > 0) {
-      toast.info(`跳过 ${skipped} 个已在队列中或冲突的条目，其余 ${taskIds.size} 个已入队`);
-    }
+    if (skipped > 0) toast.info(`跳过 ${skipped} 个已在队列中或冲突的条目，其余 ${taskIds.size} 个已入队`);
     revectorizeTaskIdsRef.current = taskIds;
     setRevectorizeProgress({ done: 0, total: taskIds.size });
   };
 
-  // G1-3：本批任务的进度投影与收尾汇总（单条不可中断，取消=撤排队项、当前条目跑完即停）
   const taskCenterTasks = useTaskCenterStore((s) => s.tasks);
   useEffect(() => {
     if (!revectorizeProgress) return;
@@ -405,9 +451,8 @@ export default function VectorModelManager() {
       .map((id) => taskCenterTasks[id])
       .filter((t) => t !== undefined && t.status !== "queued" && t.status !== "running");
     if (settled.length < ids.size) {
-      if (settled.length !== revectorizeProgress.done) {
+      if (settled.length !== revectorizeProgress.done)
         setRevectorizeProgress({ done: settled.length, total: ids.size });
-      }
       return;
     }
     const successCount = settled.filter((t) => t.status === "success").length;
@@ -429,7 +474,255 @@ export default function VectorModelManager() {
     }
   }, [taskCenterTasks, revectorizeProgress]);
 
-  const selectedModel = vectorModels.find((m) => m.id === selectedVectorModelId);
+  /** 内联配置表单（预设/编辑/自定义复用） */
+  const renderForm = (opts: { mode: "preset" | "edit" | "custom"; preset?: VectorProviderPreset }) => {
+    const { mode, preset } = opts;
+    const isEdit = mode === "edit";
+    const isCustom = mode === "custom";
+    return (
+      <div className={`rounded-lg border ${borderClass} bg-background p-3 dark:bg-neutral-800`}>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-medium text-neutral-800 text-xs dark:text-neutral-200">
+            {isEdit ? "编辑模型配置" : isCustom ? "添加自定义端点" : `配置 ${preset?.name}`}
+          </span>
+          <button
+            type="button"
+            onClick={resetForm}
+            className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="grid gap-2.5">
+          {isCustom && (
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="配置名称（如 OpenAI Embedding）"
+              className="h-8"
+            />
+          )}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className={`text-[11px] ${mutedText}`}>服务地址（完整 embeddings 端点）</span>
+              {preset?.applyUrl && !isEdit && (
+                <button
+                  type="button"
+                  onClick={() => openUrl(preset.applyUrl!).catch(() => {})}
+                  className="text-[11px] text-blue-600 underline underline-offset-2 hover:text-blue-500 dark:text-blue-400"
+                >
+                  获取 API Key ↗
+                </button>
+              )}
+            </div>
+            <Input
+              value={formData.url}
+              onChange={(e) => setFormData((prev) => ({ ...prev, url: e.target.value }))}
+              placeholder="https://api.example.com/v1/embeddings"
+              className="h-8"
+            />
+          </div>
+          <div>
+            <span className={`text-[11px] ${mutedText}`}>模型 ID</span>
+            <Input
+              value={formData.modelId}
+              onChange={(e) => setFormData((prev) => ({ ...prev, modelId: e.target.value }))}
+              placeholder="text-embedding-3-small"
+              className="mt-1 h-8"
+            />
+            {preset?.commonModels && preset.commonModels.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {preset.commonModels.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, modelId: m }))}
+                    className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] text-neutral-600 hover:border-neutral-400 dark:border-neutral-600 dark:text-neutral-300"
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {preset?.needKey !== false && (
+            <div>
+              <span className={`text-[11px] ${mutedText}`}>API Key</span>
+              <Input
+                type="password"
+                value={formData.apiKey}
+                onChange={(e) => setFormData((prev) => ({ ...prev, apiKey: e.target.value }))}
+                placeholder={
+                  isEdit
+                    ? editingKeySaved
+                      ? "已保存 ·•••（留空保留，输入新值覆盖）"
+                      : "留空保留原密钥"
+                    : preset?.needKey
+                      ? "填入服务商 API Key"
+                      : "本地服务可留空"
+                }
+                className="mt-1 h-8"
+                autoComplete="off"
+              />
+              <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                密钥保存在系统凭据管理器，不明文落盘、不随备份上传。
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={resetForm}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              onClick={
+                isEdit
+                  ? handleEdit
+                  : isCustom
+                    ? handleCustomSave
+                    : () => {
+                        void savePresetAndEnable();
+                      }
+              }
+            >
+              {isEdit ? "保存" : isCustom ? "添加" : "保存并启用"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderConfigRow = (model: VectorModelConfig) => {
+    const selected = selectedVectorModelId === model.id;
+    const result = testResults[model.id];
+    const resultClass = result?.includes("⚠️")
+      ? "text-amber-600 dark:text-amber-400"
+      : result?.includes("成功")
+        ? "text-green-600 dark:text-green-400"
+        : result?.includes("失败")
+          ? "text-red-600 dark:text-red-400"
+          : "text-neutral-500 dark:text-neutral-400";
+    return (
+      <div
+        key={model.id}
+        className={`flex items-start gap-2 rounded-md border ${borderClass} bg-background px-3 py-2 dark:bg-neutral-800`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-neutral-800 text-xs dark:text-neutral-200">{model.name}</span>
+            <span
+              className={badgeClass}
+            >{`${model.modelId || "未填模型"}${model.dimension ? ` · ${model.dimension} 维` : ""}`}</span>
+            {selected && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                已启用
+              </span>
+            )}
+          </div>
+          <div className={`mt-0.5 truncate ${mutedText}`}>{model.url}</div>
+          {result && <div className={`mt-0.5 text-[10px] ${resultClass}`}>{result}</div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void detectModelDimension(model, "测试中...")}
+            disabled={testingId === model.id}
+            className="rounded px-1.5 py-0.5 text-[11px] text-neutral-600 hover:bg-muted dark:text-neutral-300"
+          >
+            {testingId === model.id ? "测试中…" : "测试"}
+          </button>
+          <button
+            type="button"
+            onClick={() => startEdit(model)}
+            className="rounded px-1 py-0.5 text-neutral-500 hover:bg-muted hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400"
+            title="编辑"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete(model.id, model.name)}
+            className="rounded px-1 py-0.5 text-neutral-500 hover:bg-muted hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
+            title="删除"
+          >
+            <Trash2 size={13} />
+          </button>
+          <Switch
+            checked={selected}
+            onCheckedChange={(checked) => {
+              if (checked) void enableModel(model);
+              else setSelectedVectorModelId(null);
+            }}
+            className="scale-90"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderProviderRow = (preset: VectorProviderPreset) => {
+    const configs = vectorModels.filter((model) => belongsToPreset(preset, model));
+    const selectedConfig = configs.find((model) => model.id === selectedVectorModelId);
+    const expanded = expandedId === preset.id;
+    const isEditingHere = formTarget?.kind === "edit" && configs.some((m) => m.id === formTarget.id);
+    const isPresetFormHere = formTarget?.kind === "preset" && formTarget.presetId === preset.id;
+    return (
+      <div
+        key={preset.id}
+        className={`rounded-lg border ${expanded ? "border-neutral-300" : borderClass} bg-background dark:bg-neutral-800`}
+      >
+        <button
+          type="button"
+          onClick={() => setExpandedId(expanded ? null : preset.id)}
+          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+        >
+          <span
+            className={`flex size-7 shrink-0 items-center justify-center rounded-md border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
+          >
+            <BrandIcon brand={preset.brand} className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">{preset.name}</span>
+              <span className={badgeClass}>{preset.badge}</span>
+              {selectedConfig && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                  已启用 · {selectedConfig.dimension ? `${selectedConfig.dimension} 维` : "维度待测"}
+                </span>
+              )}
+            </span>
+            <span className={`mt-0.5 block truncate ${mutedText}`}>{preset.desc}</span>
+          </span>
+          <span className={`shrink-0 text-[11px] ${mutedText}`}>
+            {configs.length === 0 ? "未配置" : selectedConfig ? "" : `${configs.length} 个配置`}
+          </span>
+          <ChevronRight
+            className={`size-4 shrink-0 text-neutral-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+          />
+        </button>
+        {expanded && (
+          <div className={`space-y-2 border-t ${borderClass} px-3 py-2.5`}>
+            {configs.map((model) =>
+              isEditingHere && formTarget?.kind === "edit" && formTarget.id === model.id
+                ? renderForm({ mode: "edit", preset })
+                : renderConfigRow(model),
+            )}
+            {isPresetFormHere && renderForm({ mode: "preset", preset })}
+            {!isPresetFormHere && !isEditingHere && (
+              <button
+                type="button"
+                onClick={() => openPresetForm(preset)}
+                className="flex w-full items-center justify-center gap-1 rounded-md border border-neutral-300 border-dashed py-1.5 text-[11px] text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+              >
+                <Plus size={12} /> {configs.length === 0 ? `配置 ${preset.name}` : "再添加一个配置"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section className="rounded-lg bg-muted/80 p-4 pt-3">
@@ -437,70 +730,45 @@ export default function VectorModelManager() {
         <h2>向量模型</h2>
       </div>
 
-      {/* G1：面向零基础用户的介绍区（可折叠） */}
-      <div className="mb-4 rounded-lg border border-neutral-200 bg-background dark:border-neutral-700 dark:bg-neutral-800">
+      {/* 简介（默认折叠，避免占版面） */}
+      <div className="mb-3 rounded-lg border border-neutral-200 bg-background dark:border-neutral-700 dark:bg-neutral-800">
         <button
           type="button"
           onClick={() => setIntroOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-left"
+          className="flex w-full items-center justify-between px-4 py-2 text-left"
         >
-          <span className="flex items-center gap-2 font-medium text-neutral-800 text-sm dark:text-neutral-200">
-            <Info className="size-4 text-neutral-500 dark:text-neutral-400" />
+          <span className="flex items-center gap-2 font-medium text-neutral-800 text-xs dark:text-neutral-200">
+            <Info className="size-3.5 text-neutral-500 dark:text-neutral-400" />
             什么是向量模型？
           </span>
-          <ChevronDown className={`size-4 text-neutral-400 transition-transform ${introOpen ? "rotate-180" : ""}`} />
+          <ChevronRight className={`size-3.5 text-neutral-400 transition-transform ${introOpen ? "rotate-90" : ""}`} />
         </button>
         {introOpen && (
-          <div className="space-y-3 border-neutral-200 border-t px-4 py-3 text-neutral-600 text-xs dark:border-neutral-700 dark:text-neutral-400">
+          <div className={`space-y-2 border-t ${borderClass} px-4 py-3 text-neutral-600 text-xs dark:text-neutral-400`}>
             <p>
-              向量模型把文字转成数字向量，让 AI 能按<b className="text-neutral-800 dark:text-neutral-200">语义</b>
-              检索内容。SageRead 用它支撑：<b className="text-neutral-800 dark:text-neutral-200">聊书问答</b>
-              （AI 基于全书内容回答）、<b className="text-neutral-800 dark:text-neutral-200">论文语义检索</b>、
-              <b className="text-neutral-800 dark:text-neutral-200">翻译句词对齐</b>
-              。不配置也能正常使用阅读功能，只是没有语义检索能力。
-            </p>
-            <p>
-              <b className="text-neutral-800 dark:text-neutral-200">云端申请</b>
-              （需要 API Key，有免费额度）：
-              {APPLY_LINKS.map((link, i) => (
-                <span key={link.url}>
-                  {i > 0 && " · "}
-                  <button
-                    type="button"
-                    className="cursor-pointer text-blue-600 underline underline-offset-2 hover:text-blue-500 dark:text-blue-400"
-                    onClick={() => openUrl(link.url).catch(() => {})}
-                  >
-                    {link.label}
-                  </button>
-                  <span className="no-underline">（{link.note}）</span>
-                </span>
-              ))}
-            </p>
-            <p>
-              <b className="text-neutral-800 dark:text-neutral-200">本地部署</b>
-              （完全离线、免 Key、隐私最好）：见下方「快速接入」中的 Ollama / Xinference 预设与部署指引。
+              向量模型把文字转成数字向量，支撑聊书问答、论文语义检索、翻译句词对齐。不配置也能正常阅读，只是没有语义检索能力。
             </p>
             <p className="rounded bg-amber-50 px-2 py-1.5 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-              ⚠️ 重要：向量结果与模型绑定。<b>更换模型或维度变化后，已向量化的书库/文献库会全部失效</b>
+              ⚠️ 向量结果与模型绑定：<b>更换模型或维度变化后，已向量化的书库/文献库会全部失效</b>
               ，需要用新模型重新向量化。
             </p>
           </div>
         )}
       </div>
 
-      {/* G3：当前状态卡片（含 G1-3「全量重新向量化」入口） */}
-      <div className="mb-4 rounded-lg border border-neutral-200 bg-background px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800">
+      {/* 当前生效状态 */}
+      <div className={`mb-3 rounded-lg border ${borderClass} bg-background px-4 py-3 dark:bg-neutral-800`}>
         {selectedModel ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <CircuitBoard className="size-4 text-green-600 dark:text-green-400" />
-              <span className="text-neutral-800 dark:text-neutral-200">当前模型：{selectedModel.name}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 text-sm">
+              <CircuitBoard className="size-4 shrink-0 text-green-600 dark:text-green-400" />
+              <span className="truncate text-neutral-800 dark:text-neutral-200">当前模型：{selectedModel.name}</span>
               {selectedModel.dimension ? (
-                <span className="text-neutral-500 text-xs dark:text-neutral-400">维度 {selectedModel.dimension}</span>
+                <span className={`shrink-0 text-xs ${mutedText}`}>· {selectedModel.dimension} 维</span>
               ) : null}
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-neutral-500 text-xs dark:text-neutral-400">已向量化 {vectorizedCount} 本/篇</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${mutedText}`}>已向量化 {vectorizedCount} 本/篇</span>
               {revectorizeProgress ? (
                 <Button
                   size="sm"
@@ -508,7 +776,6 @@ export default function VectorModelManager() {
                   className="h-7 text-xs"
                   title="当前条目完成后停止"
                   onClick={() => {
-                    // 取消=撤两通道排队项、当前条目跑完即停（对齐旧串行循环条目间检查语义）
                     useTaskCenterStore.getState().cancelChannel("book-vectorize");
                     useTaskCenterStore.getState().cancelChannel("paper-vectorize");
                   }}
@@ -516,297 +783,115 @@ export default function VectorModelManager() {
                   取消（{revectorizeProgress.done}/{revectorizeProgress.total}）
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleRevectorizeAll}>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void handleRevectorizeAll()}>
                   全量重新向量化
                 </Button>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-neutral-500 text-sm dark:text-neutral-400">
+          <div className={`flex items-center gap-2 text-sm ${mutedText}`}>
             <CircuitBoard className="size-4" />
-            尚未选择向量模型——语义检索暂不可用，配置一个即可解锁
+            尚未启用向量模型——在下方云端 API 里选一个服务商配置 Key 并启用即可
           </div>
         )}
       </div>
 
-      <div className="space-y-4">
-        {isMacOS && (
-          <div className="flex items-start justify-between">
-            <div>
-              <div className={labelClass}>使用外部向量模型</div>
-              <div className="text-neutral-500 text-xs dark:text-neutral-400">
-                启用后将使用下方配置的外部模型（云端或本地部署），而非应用内置的 Llama.cpp 本地服务
-              </div>
-            </div>
-            <Switch checked={vectorModelEnabled} onCheckedChange={setVectorModelEnabled} />
+      {isMacOS && (
+        <div className="mb-3 flex items-start justify-between rounded-lg border border-neutral-200 bg-background px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800">
+          <div>
+            <div className="text-neutral-800 text-xs dark:text-neutral-200">使用外部向量模型</div>
+            <div className={`mt-0.5 ${mutedText}`}>关闭则使用应用内置的 Llama.cpp 本地嵌入服务（仅 macOS）</div>
           </div>
-        )}
+          <Switch checked={vectorModelEnabled} onCheckedChange={setVectorModelEnabled} />
+        </div>
+      )}
 
-        {!isMacOS && (
-          <div className="mb-4">
-            <div className={labelClass}>外部向量模型</div>
-            <div className="text-neutral-500 text-xs dark:text-neutral-400">
-              Windows 不提供应用内置的本地模型（仅 macOS 可用），请自行配置外部向量模型——云端 API 或本地部署（如
-              Ollama）均可
+      {vectorModelEnabled && (
+        <div className="space-y-4">
+          {/* 云端 API（推荐） */}
+          <div>
+            <div className="mb-2 flex items-baseline gap-2">
+              <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">云端 API</span>
+              <span className={`text-[11px] ${mutedText}`}>推荐 · 填 Key 后保存并启用，列表点击行展开</span>
             </div>
-          </div>
-        )}
+            <div className="space-y-2">{CLOUD_PRESETS.map(renderProviderRow)}</div>
 
-        {vectorModelEnabled && (
-          <>
-            {/* G2：快速接入预设 */}
-            <div>
-              <div className={labelClass}>快速接入</div>
-              <div className="grid grid-cols-2 gap-2">
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => applyPreset(preset.id)}
-                    className="hover-glow flex flex-col items-start gap-1 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-left transition-colors dark:border-neutral-700 dark:bg-neutral-800 dark:hover:border-neutral-500"
-                  >
-                    <span className="flex w-full items-center gap-1.5">
-                      {preset.needKey ? (
-                        <Cloud className="size-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" />
-                      ) : (
-                        <Server className="size-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" />
-                      )}
-                      <span className="font-medium text-neutral-800 text-xs dark:text-neutral-200">{preset.label}</span>
-                      <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] text-neutral-500 dark:text-neutral-400">
-                        {preset.badge}
-                      </span>
-                    </span>
-                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400">{preset.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 模型列表 */}
-            <div className="space-y-3">
-              {vectorModels.length === 0 ? (
-                <div className="space-y-1 rounded-lg border p-4 text-center">
-                  <p className="text-neutral-600 dark:text-neutral-200">暂无配置的模型</p>
-                  <p className="text-neutral-600 text-xs dark:text-neutral-200">
-                    点击上方「快速接入」预设，或点击下方「添加模型」手动配置
-                  </p>
-                </div>
-              ) : (
-                vectorModels.map((model) => (
-                  <div key={model.id} className="flex items-start justify-between gap-3 border-b p-3 px-0">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-neutral-900 text-sm dark:text-neutral-100">{model.name}</span>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              onClick={() => handleDelete(model.id, model.name)}
-                              className="p-0 text-neutral-500 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
-                            >
-                              <Trash2 className="size-3" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">删除模型</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              onClick={() => startEdit(model)}
-                              className="p-0 text-neutral-500 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400"
-                            >
-                              <Edit2 className="size-3" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">编辑模型</TooltipContent>
-                        </Tooltip>
-                        <button
-                          onClick={() => testModel(model)}
-                          disabled={testingId === model.id}
-                          className="cursor-pointer text-xs"
-                        >
-                          {testingId === model.id ? "测试中…" : "测试"}
-                        </button>
-                      </div>
-                      <p className="mt-1 text-neutral-600 text-xs dark:text-neutral-400">
-                        {model.url} • {model.dimension && `维度: ${model.dimension}`}
-                        {testResults[model.id] && (
-                          <span
-                            className={`mt-1 ml-1 text-xs ${
-                              testResults[model.id].includes("⚠️")
-                                ? "text-amber-600 dark:text-amber-400"
-                                : testResults[model.id].includes("成功")
-                                  ? "text-green-600 dark:text-green-400"
-                                  : testResults[model.id].includes("失败")
-                                    ? "text-red-600 dark:text-red-400"
-                                    : "text-neutral-600 dark:text-neutral-400"
-                            }`}
-                          >
-                            {testResults[model.id]}
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 text-neutral-600 text-xs dark:text-neutral-400">{model.description}</p>
-                    </div>
-                    <Switch
-                      checked={selectedVectorModelId === model.id}
-                      onCheckedChange={(checked) => handleModelSelect(model, checked)}
-                      className="shrink-0"
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-
-            {(showAddForm || editingId) && (
-              <div className="rounded-lg border border-neutral-200 bg-background p-4 dark:border-neutral-700 dark:bg-neutral-800">
-                <div className="mb-3 flex items-center justify-between">
-                  <h4 className="font-medium text-neutral-900 dark:text-neutral-100">
-                    {editingId ? "编辑模型配置" : "添加新模型"}
-                  </h4>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="sm" variant="ghost" onClick={resetForm} className="h-8 px-2">
-                        <X size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">关闭</TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <div className="grid gap-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className={labelClass}>名称 *</label>
-                      <Input
-                        value={formData.name}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                        placeholder="OpenAI Embedding"
-                        className="h-8"
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>模型ID *</label>
-                      <Input
-                        value={formData.modelId}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, modelId: e.target.value }))}
-                        placeholder="text-embedding-3-small"
-                        className="h-8"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelClass}>API端点（完整URL）*</label>
-                    <Input
-                      value={formData.url}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, url: e.target.value }))}
-                      placeholder="https://api.openai.com/v1/embeddings（必须包含完整路径）"
-                      className="h-8"
-                    />
-                    <p className="mt-1 text-neutral-500 text-xs dark:text-neutral-400">
-                      云端填完整 embeddings 端点（含 /v1/embeddings 路径）；本地 Ollama 填
-                      http://127.0.0.1:11434/api/embed
-                    </p>
-                  </div>
-                  <div>
-                    <label className={labelClass}>
-                      API Key{formData.url.includes("127.0.0.1") ? "（本地模型可留空）" : ""}
-                    </label>
-                    <Input
-                      type="password"
-                      value={formData.apiKey}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, apiKey: e.target.value }))}
-                      placeholder={
-                        editingId
-                          ? editingKeySaved
-                            ? "已保存 ·•••（留空保留，输入新值可覆盖）"
-                            : "留空保留原密钥，输入新值可覆盖"
-                          : "sk-..."
-                      }
-                      className="h-8"
-                      autoComplete="off"
-                    />
-                    <p className="mt-1 text-neutral-500 text-xs dark:text-neutral-400">
-                      密钥保存在系统凭据管理器，不会明文落盘或随备份上传。
-                    </p>
-                  </div>
-                  <div>
-                    <label className={labelClass}>描述</label>
-                    <Input
-                      value={formData.description}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="模型描述信息"
-                      className="h-8"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={resetForm}>
-                    取消
-                  </Button>
-                  <Button size="sm" onClick={editingId ? handleEdit : handleAdd}>
-                    {editingId ? "保存" : "添加"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {!showAddForm && !editingId && (
-              <Button variant="outline" onClick={() => setShowAddForm(true)} className="flex w-full items-center gap-2">
-                <Plus size={16} />
-                添加模型配置
-              </Button>
-            )}
-
-            {/* G2：本地部署指引（折叠） */}
-            <div className="rounded-lg border border-neutral-200 bg-background dark:border-neutral-700 dark:bg-neutral-800">
+            {/* 自定义端点与其他配置 */}
+            <div className={`mt-2 rounded-lg border ${borderClass} bg-background dark:bg-neutral-800`}>
               <button
                 type="button"
-                onClick={() => setLocalGuideOpen((v) => !v)}
-                className="flex w-full items-center justify-between px-4 py-2.5 text-left"
+                onClick={() => setExpandedId(expandedId === "custom" ? null : "custom")}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
               >
-                <span className="flex items-center gap-2 font-medium text-neutral-800 text-sm dark:text-neutral-200">
-                  <Server className="size-4 text-neutral-500 dark:text-neutral-400" />
-                  本地部署指引（Ollama）
+                <span
+                  className={`flex size-7 items-center justify-center rounded-md border ${borderClass} bg-muted/60 dark:bg-neutral-700`}
+                >
+                  <Plus className="size-4 text-neutral-500" />
                 </span>
-                <ChevronDown
-                  className={`size-4 text-neutral-400 transition-transform ${localGuideOpen ? "rotate-180" : ""}`}
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">自定义端点</span>
+                  <span className={`ml-2 text-[11px] ${mutedText}`}>任意 OpenAI 兼容 /v1/embeddings</span>
+                </span>
+                <ChevronRight
+                  className={`size-4 shrink-0 text-neutral-400 transition-transform ${expandedId === "custom" ? "rotate-90" : ""}`}
                 />
               </button>
-              {localGuideOpen && (
-                <div className="space-y-2 border-neutral-200 border-t px-4 py-3 text-neutral-600 text-xs dark:border-neutral-700 dark:text-neutral-400">
-                  <p>本地模型完全离线运行：数据不出本机、免 API Key、无调用费用，适合注重隐私或网络受限的场景。</p>
-                  <ol className="list-decimal space-y-1.5 pl-4">
-                    <li>
-                      安装 Ollama：
-                      <button
-                        type="button"
-                        className="mx-1 cursor-pointer text-blue-600 underline underline-offset-2 hover:text-blue-500 dark:text-blue-400"
-                        onClick={() => openUrl("https://ollama.com").catch(() => {})}
-                      >
-                        ollama.com
-                      </button>
-                      下载安装包（Windows/macOS/Linux 均支持）
-                    </li>
-                    <li>
-                      终端执行{" "}
-                      <code className="rounded bg-muted px-1 py-0.5 font-mono">ollama pull embeddinggemma-2:440m</code>
-                      下载嵌入模型（约 0.7GB，768 维，中英多语，2026-10 新版；也可换用其它 Ollama 嵌入模型）
-                    </li>
-                    <li>保持 Ollama 在后台运行（安装后默认随系统启动）</li>
-                    <li>点击上方「快速接入 → Ollama」预设自动填好配置，保存后点「测试」验证</li>
-                  </ol>
-                  <p>
-                    进阶：也可用 LM Studio（默认 http://127.0.0.1:1234/v1/embeddings）/ Xinference / llama.cpp server /
-                    TEI 等提供 OpenAI 兼容的 /v1/embeddings 端点，选对应预设填写即可。
-                  </p>
+              {expandedId === "custom" && (
+                <div className={`space-y-2 border-t ${borderClass} px-3 py-2.5`}>
+                  {customConfigs.map((model) =>
+                    formTarget?.kind === "edit" && formTarget.id === model.id
+                      ? renderForm({ mode: "edit" })
+                      : renderConfigRow(model),
+                  )}
+                  {formTarget?.kind === "custom"
+                    ? renderForm({ mode: "custom" })
+                    : !(formTarget?.kind === "edit" && customConfigs.some((m) => m.id === formTarget.id)) && (
+                        <button
+                          type="button"
+                          onClick={openCustomForm}
+                          className="flex w-full items-center justify-center gap-1 rounded-md border border-neutral-300 border-dashed py-1.5 text-[11px] text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                        >
+                          <Plus size={12} /> 添加自定义端点
+                        </button>
+                      )}
                 </div>
               )}
             </div>
-          </>
-        )}
-      </div>
+          </div>
+
+          {/* 本地部署（默认折叠，不推荐） */}
+          <div className={`rounded-lg border ${borderClass} bg-background dark:bg-neutral-800`}>
+            <button
+              type="button"
+              onClick={() => setLocalOpen((v) => !v)}
+              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+            >
+              <Server className="size-4 shrink-0 text-neutral-500" />
+              <span className="min-w-0 flex-1">
+                <span className="font-medium text-neutral-800 text-sm dark:text-neutral-200">本地部署</span>
+                <span className={`ml-2 text-[11px] ${mutedText}`}>
+                  进阶（可选）· 不推荐：手机/平板无法本地部署向量模型，移动端请用云端 API
+                </span>
+              </span>
+              <ChevronRight
+                className={`size-4 shrink-0 text-neutral-400 transition-transform ${localOpen ? "rotate-90" : ""}`}
+              />
+            </button>
+            {localOpen && (
+              <div className="space-y-2 border-neutral-200 border-t px-3 py-2.5 dark:border-neutral-700">
+                {LOCAL_PRESETS.map(renderProviderRow)}
+              </div>
+            )}
+          </div>
+
+          {/* 换模警示 */}
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800 text-xs dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            ⚠️ 更换向量模型后，已向量化的 {vectorizedCount}{" "}
+            本书/论文将全部失效，需要用新模型重新向量化后才能继续语义检索。维度以实际探测结果为准，无需手填；同时只能启用一个模型。
+          </div>
+        </div>
+      )}
     </section>
   );
 }
