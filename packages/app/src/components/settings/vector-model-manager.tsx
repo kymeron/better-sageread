@@ -32,9 +32,19 @@ const PRESETS: {
     badge: "本地部署",
     name: "Ollama 本地模型",
     url: "http://127.0.0.1:11434/api/embed",
-    modelId: "bge-m3",
+    modelId: "embeddinggemma-2:440m",
     needKey: false,
-    desc: "完全离线，免申请，隐私最好",
+    desc: "完全离线，免申请，隐私最好（推荐 embeddinggemma-2，768 维）",
+  },
+  {
+    id: "lmstudio",
+    label: "LM Studio",
+    badge: "本地部署",
+    name: "LM Studio 本地模型",
+    url: "http://127.0.0.1:1234/v1/embeddings",
+    modelId: "",
+    needKey: false,
+    desc: "OpenAI 兼容端点，免 API Key（模型名按 LM Studio 里下载的填）",
   },
   {
     id: "xinference",
@@ -780,15 +790,16 @@ export default function VectorModelManager() {
                       下载安装包（Windows/macOS/Linux 均支持）
                     </li>
                     <li>
-                      终端执行 <code className="rounded bg-muted px-1 py-0.5 font-mono">ollama pull bge-m3</code>
-                      下载嵌入模型（约 1.2GB，中英双语效果好）
+                      终端执行{" "}
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono">ollama pull embeddinggemma-2:440m</code>
+                      下载嵌入模型（约 0.7GB，768 维，中英多语，2026-10 新版；也可换用其它 Ollama 嵌入模型）
                     </li>
                     <li>保持 Ollama 在后台运行（安装后默认随系统启动）</li>
                     <li>点击上方「快速接入 → Ollama」预设自动填好配置，保存后点「测试」验证</li>
                   </ol>
                   <p>
-                    进阶：也可用 Xinference / llama.cpp server / TEI 等提供 OpenAI 兼容的 /v1/embeddings
-                    端点，选「自定义端点」预设填写即可。
+                    进阶：也可用 LM Studio（默认 http://127.0.0.1:1234/v1/embeddings）/ Xinference / llama.cpp server /
+                    TEI 等提供 OpenAI 兼容的 /v1/embeddings 端点，选对应预设填写即可。
                   </p>
                 </div>
               )}

@@ -524,13 +524,33 @@ function ChatMessagesComponent({
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const loadNewerRef = useRef<HTMLDivElement | null>(null);
-  const expandAdjustRef = useRef<{ scroller: HTMLElement; prevHeight: number } | null>(null);
+  const expandAdjustRef = useRef<{
+    scroller: HTMLElement;
+    prevHeight: number;
+    /** 锚点：扩展前视口内第一条消息的 id 与相对滚动容器顶部的偏移（抗原生锚定叠加与异步增高） */
+    anchorId: string | null;
+    anchorTop: number;
+  } | null>(null);
 
   const expandWindow = useCallback(() => {
     const scroller = findScrollableAncestor(loadMoreRef.current);
-    if (scroller) expandAdjustRef.current = { scroller, prevHeight: scroller.scrollHeight };
+    if (scroller) {
+      // 先脱离底部跟随：内容在视口上方长高时，StickToBottom 的 ResizeObserver 可能把视图拽回底部
+      stickContextRef?.current?.stopScroll?.();
+      const scrollerTop = scroller.getBoundingClientRect().top;
+      const anchor = Array.from(scroller.querySelectorAll<HTMLElement>("[data-message-id]")).find((el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.bottom > scrollerTop; // 第一条仍在视口内的消息
+      });
+      expandAdjustRef.current = {
+        scroller,
+        prevHeight: scroller.scrollHeight,
+        anchorId: anchor?.getAttribute("data-message-id") ?? null,
+        anchorTop: anchor ? anchor.getBoundingClientRect().top - scrollerTop : 0,
+      };
+    }
     setVisibleCount((c) => Math.min(messages.length, c + EXPAND_STEP));
-  }, [messages.length]);
+  }, [messages.length, stickContextRef]);
 
   const expandNewer = useCallback(() => {
     // 先脱离底部跟随：内容在下方增长时，跟随锁会把视图拽到新的底部，读到一半被跳过
@@ -554,14 +574,32 @@ function ChatMessagesComponent({
     };
   });
 
-  // 扩展后用新增高度差补偿 scrollTop，保持视口内容不跳
+  // 扩展后保持视口内容不跳：优先用「锚点元素法」——记录扩展前视口内第一条消息的
+  // id 与相对位置，扩展后按同一元素的新位置反算 scrollTop（免疫原生 overflow-anchor
+  // 双重补偿与异步增高内容）；锚点元素缺失时回退到旧的 scrollHeight 差补偿。
   // biome-ignore lint/correctness/useExhaustiveDependencies: visibleCount 是刻意的触发依赖（effect 体只读 ref），等扩展渲染提交后再补偿
   useLayoutEffect(() => {
     const st = expandAdjustRef.current;
     if (!st) return;
     expandAdjustRef.current = null;
-    const delta = st.scroller.scrollHeight - st.prevHeight;
-    if (delta > 0) st.scroller.scrollTop += delta;
+    const anchorOffset = () => st.scroller.getBoundingClientRect().top;
+    const adjustByAnchor = () => {
+      if (!st.anchorId) return false;
+      const el = st.scroller.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(st.anchorId)}"]`);
+      if (!el) return false;
+      const delta = el.getBoundingClientRect().top - anchorOffset() - st.anchorTop;
+      if (Math.abs(delta) > 0.5) st.scroller.scrollTop += delta;
+      return true;
+    };
+    if (adjustByAnchor()) {
+      // 异步增高内容（代码高亮/公式/图片/折叠区）在补偿后再落地时，下一帧用同一锚点再校一次
+      requestAnimationFrame(() => {
+        adjustByAnchor();
+      });
+    } else {
+      const delta = st.scroller.scrollHeight - st.prevHeight;
+      if (delta > 0) st.scroller.scrollTop += delta;
+    }
   }, [visibleCount]);
 
   // 上滑接近占位行（提前 200px）自动扩展；短消息填不满视口时占位行本就可见，

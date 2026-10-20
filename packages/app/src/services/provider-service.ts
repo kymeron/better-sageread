@@ -85,3 +85,61 @@ export const fetchModelsFromProvider = async (provider: ModelProvider): Promise<
     throw error;
   }
 };
+
+/** 本地服务的原生管理 API 根地址（去掉 /v1 后缀） */
+function nativeRoot(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
+/**
+ * 聊天模型列表过滤（模型列表只留对话模型）：
+ * - Ollama：/v1/models 会把嵌入/多模态模型一并列出；用原生 /api/show 的
+ *   capabilities（completion / tools）判定是否为对话模型；
+ * - LM Studio：用 /api/v0/models 的 type 过滤掉 "embeddings"；
+ * - 过滤失败或结果为空时回退原列表，避免误杀。
+ */
+export async function filterChatModels(modelIds: string[], provider: ModelProvider): Promise<string[]> {
+  const baseUrl = (provider.baseUrl ?? "").trim();
+  if (!baseUrl) return modelIds;
+
+  const isOllama = /:11434(?:\/|$)/.test(baseUrl) || /ollama/i.test(provider.name ?? "");
+  if (isOllama) {
+    const root = nativeRoot(baseUrl);
+    const checked = await Promise.all(
+      modelIds.map(async (id) => {
+        try {
+          const res = await fetchTauri(`${root}/api/show`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: id }),
+          });
+          if (!res.ok) return id;
+          const json = (await res.json()) as { capabilities?: string[] };
+          const caps = Array.isArray(json.capabilities) ? json.capabilities : [];
+          if (!caps.length) return id;
+          return caps.includes("completion") || caps.includes("tools") ? id : null;
+        } catch {
+          return id;
+        }
+      }),
+    );
+    const chatModels = checked.filter((id): id is string => !!id);
+    return chatModels.length > 0 ? chatModels : modelIds;
+  }
+
+  const isLmStudio = /:1234(?:\/|$)/.test(baseUrl) || /lm\s*studio/i.test(provider.name ?? "");
+  if (isLmStudio) {
+    try {
+      const res = await fetchTauri(`${nativeRoot(baseUrl)}/api/v0/models`);
+      if (!res.ok) return modelIds;
+      const json = (await res.json()) as { data?: Array<{ id?: string; type?: string }> };
+      const typeMap = new Map((json.data ?? []).map((m) => [m.id, m.type]));
+      const chatModels = modelIds.filter((id) => typeMap.get(id) !== "embeddings");
+      return chatModels.length > 0 ? chatModels : modelIds;
+    } catch {
+      return modelIds;
+    }
+  }
+
+  return modelIds;
+}

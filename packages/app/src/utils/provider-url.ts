@@ -20,3 +20,9 @@ export function isOllamaEndpoint(baseUrl?: string | null): boolean {
   const url = (baseUrl ?? "").trim();
   return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):11434(?:\/|$)/i.test(url);
 }
+
+/** 是否为 LM Studio 默认端点（本地 OpenAI 兼容，默认 127.0.0.1:1234）。 */
+export function isLMStudioEndpoint(baseUrl?: string | null): boolean {
+  const url = (baseUrl ?? "").trim();
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):1234(?:\/|$)/i.test(url);
+}

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { fetchModelsFromProvider } from "@/services/provider-service";
+import { fetchModelsFromProvider, filterChatModels } from "@/services/provider-service";
 import { useProviderStore } from "@/store/provider-store";
 import { isLocalEndpoint } from "@/utils/provider-url";
 import { throttle } from "@/utils/throttle";
@@ -162,11 +162,14 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
     setRefreshError(null);
 
     try {
-      const modelIds = await fetchModelsFromProvider({
+      const rawModelIds = await fetchModelsFromProvider({
         ...provider,
         apiKey: provider.apiKey,
         baseUrl: provider.baseUrl,
       });
+
+      // 只保留对话模型（Ollama 会把 embedding 模型一起列出来；LM Studio 过滤 embeddings）
+      const modelIds = await filterChatModels(rawModelIds, provider);
 
       // 归一化 + 去重（服务端可能返回重复/空白 id；同一模型只保留一条）
       const fetchedIds = [...new Set(modelIds.map((id) => id.trim()).filter(Boolean))];

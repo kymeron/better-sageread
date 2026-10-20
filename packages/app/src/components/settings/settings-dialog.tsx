@@ -1,23 +1,9 @@
-import {
-  Anthropic,
-  ChatGLM,
-  DeepSeek,
-  Doubao,
-  Gemini,
-  Grok,
-  Moonshot,
-  Ollama,
-  OpenAI,
-  OpenRouter,
-  Qwen,
-  XiaomiMiMo,
-} from "@/components/icons";
+import { ProviderIcon } from "@/components/provider-icon";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useProviderStore } from "@/store/provider-store";
-import { isOllamaEndpoint } from "@/utils/provider-url";
-import { ChevronRight, Server } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import AgentSettings from "./agent-settings";
 import ConverterSettings from "./converter";
@@ -67,44 +53,8 @@ interface SettingsItem {
   children?: SettingsItem[];
 }
 
-export function ProviderIcons({
-  providerId,
-  provider,
-}: {
-  providerId: string;
-  provider?: ModelProvider;
-}): React.ReactNode {
-  switch (providerId) {
-    case "openai":
-      return <OpenAI className="h-4 w-4" />;
-    case "anthropic":
-      return <Anthropic className="h-4 w-4" />;
-    case "openrouter":
-      return <OpenRouter className="h-4 w-4" />;
-    case "gemini":
-      return <Gemini className="h-4 w-4" />;
-    case "grok":
-      return <Grok className="h-4 w-4" />;
-    case "deepseek":
-      return <DeepSeek className="h-4 w-4" />;
-    case "zhipu":
-      return <ChatGLM className="h-4 w-4" />;
-    case "kimi":
-      return <Moonshot className="h-4 w-4" />;
-    case "xiaomi":
-      return <XiaomiMiMo className="h-4 w-4" />;
-    case "qwen":
-      return <Qwen className="h-4 w-4" />;
-    case "doubao":
-      return <Doubao className="h-4 w-4" />;
-    default:
-      // 自定义提供商：识别 Ollama（名称/默认端口），否则回退服务器图标
-      if (provider?.icon === "ollama" || isOllamaEndpoint(provider?.baseUrl) || /ollama/i.test(provider?.name ?? "")) {
-        return <Ollama className="h-4 w-4" />;
-      }
-      return <Server className="h-4 w-4" />;
-  }
-}
+// 图标实现抽到 components/provider-icon（侧栏/侧聊天模型下拉共用，避免循环依赖）
+export { ProviderIcon as ProviderIcons } from "@/components/provider-icon";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [activeKey, setActiveKey] = useState<SettingsKey>("general");
@@ -232,7 +182,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             )}
           >
             {item.key.startsWith("provider-") ? (
-              <ProviderIcons
+              <ProviderIcon
                 providerId={item.key.replace("provider-", "")}
                 provider={modelProviders.find((p) => p.provider === item.key.replace("provider-", ""))}
               />

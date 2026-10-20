@@ -356,7 +356,7 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
 
 ---
 
-## 🆕 2026-10-17 聊天尾部窗口扩展时视口跳底 —— 本轮挂账（仅代码调查，未施工）
+## 🆕 2026-10-17 聊天尾部窗口扩展时视口跳底 —— ✅ 2026-10-21 已修复（锚点法 + 脱离底部跟随）
 
 **用户实测现象**：侧栏对话分批渲染（用户口中的【块1】【块2】…＝一批消息，不是 markdown 块）。停在最后一批（块4）底部往上翻，翻到块4顶部时块3被挂载；挂载完成后视口**跳回块4底部**，得重新往上翻。期望行为：块3落地后视口停在块3/块4交界处不动。
 
@@ -381,6 +381,12 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
 - C：`expandWindow` 对齐 `expandNewer`，扩展前 `stopScroll()`；并考虑扩展期间暂停 ResizeObserver 触发的 `scrollToBottom`。
 - D（**倾向方案**）：补偿改「锚点元素法」——扩展前记录视口内首个可见消息的 `data-message-id` 及其 `getBoundingClientRect().top`，扩展后用同一元素的新位置反算 `scrollTop`。天然免疫原生锚定叠加与异步增高，且与 `prompt-kit/chat-message-rail.tsx:257` 已有的坐标换算是同一套做法。A/B/C 可作辅助。
 - 验收口径：停在末批底部 → 上翻触发扩展 → 视口应停在原「块3/块4 交界」±数像素；连续多次上翻不累积漂移；流式输出进行中上翻扩展不破坏底部跟随语义。
+
+**✅ 2026-10-21 修复实现**（`chat-messages.tsx`）：
+- 采用方案 D：`expandWindow()` 扩展前记录**视口内第一条消息**的 `data-message-id` 与相对滚动容器顶部的偏移；`useLayoutEffect` 里用同一元素渲染后的新位置反算 `scrollTop` 增量（`delta = newTop - anchorTop`），下一帧 rAF 再校一次覆盖异步增高内容（Shiki/KaTeX/图片/折叠区）；锚点缺失时回退旧 `scrollHeight` 差补偿。
+- 同步采用方案 C：`expandWindow` 扩展前调用 `stickContextRef.current.stopScroll()`，与 `expandNewer` 对齐，避免 StickToBottom ResizeObserver 在正向增高时把视口拽回底部。
+- 锚点法测量的是渲染后的真实位置（已包含原生 overflow-anchor 的调整），因此即使浏览器原生锚定仍开启也不会双倍补偿；暂不改滚动容器 `overflow-anchor` 策略。
+- 验收待用户在真实长对话上确认（停在末批底部上翻触发扩展，视口应停在原交界处 ±数像素、连续上翻不累积漂移）。
 
 **关联旧账**：`docs/audits/reading-position-and-chunks-audit.md` §4 缺口清单第 1 条「阅读位置 → 块映射（双侧）」仍是未接的桥（该条目前只活在审计文档里，未进本账本）。本条是渲染层的滚动锚定问题，与那条的语义映射无关，勿混。
 
@@ -417,6 +423,12 @@ scope 最新一条（即本次对话），返回 buildThreadMarkdown 文本。�
    - 环境：用户已升级官方 Ollama 0.40.6；模型目录已统一为 `F:\OllamaModels`（Ollama App 设置 + 环境变量一致，旧目录删除）。
    - 顺带 UI 修复（2026-10-21）：提供商列表「x 个模型」改为**启用**模型数（并修掉 1 个时不显示数字的 bug）；Ollama 品牌图标；本地服务 API Key 提示（可留空，不再拦截启用）；获取模型列表去重（手动/自动同 id 不再重复）；「手动」标识加 tooltip；模型页补「ollama pull → 刷新启用」引导。
    - 全部细节/管理小抄/清理记录 → `docs/audits/local-model-ollama-test-2026-10-20.md`。
+5. **模型提供商 / 向量模型体验二批** —— ✅ 已落地（2026-10-21）
+   - 侧聊天**模型选择器下拉图标修复**：抽出共享 `components/provider-icon.tsx`（预置厂商品牌 SVG + 自定义 provider 按名称/端点识别 Ollama、LM Studio，未知回退服务器图标）；此前自定义 provider 的 icon 映射为 `null`，Ollama/CherryIN 等整组无图标。
+   - **LM Studio 支持**：品牌图标 + `127.0.0.1:1234` 端点识别；获取模型列表时用其 `/api/v0/models` 的 type 过滤掉 embedding 模型；向量模型预设新增 LM Studio（`/v1/embeddings`、免 Key）。
+   - **Ollama 获取模型列表只留对话模型**：用原生 `/api/show` 的 capabilities（completion/tools）过滤，嵌入模型（embeddinggemma 等）不再混入聊天模型列表；过滤失败/为空回退原列表。
+   - Ollama 向量模型预设与本地部署指引从 `bge-m3` 更新为 **`embeddinggemma-2:440m`**（768 维，约 0.7GB，2026-10 新版），并补 LM Studio 指引。
+   - **向量模型页改版 demo**：`docs/mockups/vector-model-page-demo.html` + `:png` 截图（仿模型提供商页：当前生效卡片、本地/云端分区、预填 URL、获取模型列表、单选启用、换模警示与维度说明）——**待用户评审后再落地实现**。
 
 ### ⏸ 搁置（2026-10-20 用户拍板，不排期）
 

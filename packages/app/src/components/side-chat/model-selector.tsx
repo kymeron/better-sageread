@@ -1,16 +1,4 @@
-import {
-  Anthropic,
-  ChatGLM,
-  DeepSeek,
-  Doubao,
-  Gemini,
-  Grok,
-  Moonshot,
-  OpenAI,
-  OpenRouter,
-  Qwen,
-  XiaomiMiMo,
-} from "@/components/icons";
+import { ProviderIcon } from "@/components/provider-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,21 +12,6 @@ import { cn } from "@/lib/utils";
 import { type SelectedModel, useProviderStore } from "@/store/provider-store";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { SVGProps } from "react";
-
-const providerIcons: Record<string, React.ComponentType<SVGProps<SVGSVGElement>>> = {
-  openai: OpenAI,
-  anthropic: Anthropic,
-  openrouter: OpenRouter,
-  grok: Grok,
-  gemini: Gemini,
-  deepseek: DeepSeek,
-  zhipu: ChatGLM,
-  kimi: Moonshot,
-  xiaomi: XiaomiMiMo,
-  qwen: Qwen,
-  doubao: Doubao,
-};
 
 interface ModelSelectorProps {
   selectedModel: SelectedModel | null;
@@ -118,8 +91,11 @@ export default function ModelSelector({
     setSearchTerm("");
   };
 
+  // 自定义 provider（Ollama / LM Studio / CherryIN 等）也要有图标：按 provider 对象解析品牌，
+  // 识别不出的回退服务器图标，避免下拉框里整组"没有图标"
   const getProviderIcon = (providerId: string) => {
-    return providerIcons[providerId] || null;
+    const provider = modelProviders.find((p) => p.provider === providerId);
+    return <ProviderIcon providerId={providerId} provider={provider} className="h-4 w-4 flex-shrink-0" />;
   };
 
   return (
@@ -134,10 +110,7 @@ export default function ModelSelector({
           <div className="flex min-w-0 items-center gap-2 truncate">
             {selectedModel ? (
               <>
-                {(() => {
-                  const IconComponent = getProviderIcon(selectedModel.providerId);
-                  return IconComponent ? <IconComponent className="h-4 w-4 flex-shrink-0" /> : null;
-                })()}
+                {getProviderIcon(selectedModel.providerId)}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="truncate text-xs">{selectedModel.modelName}</span>
@@ -178,10 +151,7 @@ export default function ModelSelector({
             Object.entries(groupedModels).map(([providerId, models]) => (
               <div key={providerId}>
                 <div className="flex items-center gap-2 py-2 pl-2 font-medium text-muted-foreground text-xs dark:text-neutral-400">
-                  {(() => {
-                    const IconComponent = getProviderIcon(providerId);
-                    return IconComponent ? <IconComponent className="h-4 w-4" /> : null;
-                  })()}
+                  {getProviderIcon(providerId)}
                   {models[0].providerName}
                 </div>
 
