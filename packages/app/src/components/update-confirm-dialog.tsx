@@ -13,8 +13,12 @@ export function UpdateConfirmDialog() {
   const confirmUpdate = useUpdateStore((s) => s.confirmUpdate);
   const dismissUpdate = useUpdateStore((s) => s.dismissUpdate);
 
-  // 更新说明正文剥掉首行 H1（就是「Better SageRead vX.Y.Z — 主题」，与对话框标题重复）
-  const notesBody = pendingUpdate?.body?.replace(/^\s*#[^\n]*(?:\n+|$)/, "");
+  // 更新说明首行 H1 就是「Better SageRead vX.Y.Z — 主题」的更新公告标题：
+  // 把它作为弹窗标题保留展示（此前被剥掉，用户看不到本次更新的主题），正文再剥掉 H1 避免重复。
+  const rawBody = pendingUpdate?.body ?? "";
+  const titleMatch = rawBody.match(/^\s*#\s+(.+?)\s*(?:\n+|$)/);
+  const releaseTitle = titleMatch?.[1]?.trim();
+  const notesBody = releaseTitle ? rawBody.replace(/^\s*#[^\n]*(?:\n+|$)/, "") : rawBody;
 
   return (
     <Dialog
@@ -25,7 +29,9 @@ export function UpdateConfirmDialog() {
     >
       <DialogContent className="flex max-h-[80vh] max-w-lg flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>发现新版本 v{pendingUpdate?.version}</DialogTitle>
+          <DialogTitle className="pr-8 text-left leading-snug">
+            {releaseTitle ?? `发现新版本 v${pendingUpdate?.version}`}
+          </DialogTitle>
         </DialogHeader>
         {notesBody && (
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
