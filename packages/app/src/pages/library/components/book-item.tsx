@@ -30,7 +30,7 @@ import { type Tag, createTag, getTags } from "@/services/tag-service";
 import { useLayoutStore } from "@/store/layout-store";
 import { isMobile } from "@/utils/mobile";
 import { useTaskCenterStore } from "@/store/task-center-store";
-import type { BookWithStatusAndUrls } from "@/types/simple-book";
+import type { BookUpdateData, BookWithStatusAndUrls } from "@/types/simple-book";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
@@ -40,13 +40,6 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import EditInfo from "./edit-info";
 import EmbeddingDialog from "./embedding-dialog";
-
-interface BookUpdateData {
-  title?: string;
-  author?: string;
-  coverPath?: string;
-  tags?: string[];
-}
 
 /** fixed-layout 探测缓存（bookId → 是否固定版式）：右键菜单翻译守卫用——该信息只在解析 EPUB 后
  *  可知（rendition.layout），对每书每会话至多惰性解析一次；翻译执行器的 assertBookTranslatable

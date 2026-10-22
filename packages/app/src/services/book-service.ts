@@ -163,7 +163,8 @@ export async function convertBookWithStatusUrls(book: BookWithStatus): Promise<B
       : undefined;
 
     const fileUrl = convertFileSrc(absoluteFilePath);
-    const coverUrl = absoluteCoverPath ? convertFileSrc(absoluteCoverPath) : undefined;
+    // 封面文件名固定（books/{id}/cover.*），更换封面后 URL 不变会被 WebView 缓存成旧图，用版本号强制刷新
+    const coverUrl = absoluteCoverPath ? `${convertFileSrc(absoluteCoverPath)}?v=${book.updatedAt}` : undefined;
 
     return {
       ...book,

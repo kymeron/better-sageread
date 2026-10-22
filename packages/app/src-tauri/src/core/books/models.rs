@@ -57,6 +57,9 @@ pub struct BookUpdateData {
     pub title: Option<String>,
     pub author: Option<String>,
     pub tags: Option<Vec<String>>,
+    /// 新封面图片的本地绝对路径（编辑信息对话框选择），由 update_book 拷贝进书籍目录
+    #[serde(rename = "coverPath")]
+    pub cover_path: Option<String>,
     #[serde(rename = "updatedAt")]
     pub updated_at: Option<i64>,
 }

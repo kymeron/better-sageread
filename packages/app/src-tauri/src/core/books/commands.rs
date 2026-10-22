@@ -235,7 +235,57 @@ pub async fn update_book(
             .map_err(|e| format!("更新标签失败: {}", e))?;
     }
 
-    if update_data.title.is_none() && update_data.author.is_none() && update_data.tags.is_none() {
+    if let Some(cover_source_path) = &update_data.cover_path {
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("获取应用目录失败: {}", e))?;
+        let book_dir = app_data_dir.join("books").join(&id);
+        fs::create_dir_all(&book_dir).map_err(|e| format!("创建书籍目录失败: {}", e))?;
+
+        // 保留源文件扩展名，避免把 PNG 存成 .jpg 导致 asset 协议返回的 MIME 不匹配
+        let ext = std::path::Path::new(cover_source_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .filter(|e| matches!(e.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"))
+            .unwrap_or_else(|| "jpg".to_string());
+        let cover_file_name = format!("cover.{}", ext);
+        let cover_file_path = book_dir.join(&cover_file_name);
+
+        let old_cover_path: Option<String> =
+            sqlx::query_scalar("SELECT cover_path FROM books WHERE id = ?")
+                .bind(&id)
+                .fetch_optional(&db_pool)
+                .await
+                .map_err(|e| format!("查询封面路径失败: {}", e))?;
+
+        fs::copy(cover_source_path, &cover_file_path).map_err(|e| format!("保存封面图片失败: {}", e))?;
+
+        let relative_cover_path = format!("books/{}/{}", id, cover_file_name);
+        sqlx::query("UPDATE books SET cover_path = ?, updated_at = ? WHERE id = ?")
+            .bind(&relative_cover_path)
+            .bind(now)
+            .bind(&id)
+            .execute(&db_pool)
+            .await
+            .map_err(|e| format!("更新封面失败: {}", e))?;
+
+        // 扩展名变化时清理旧封面文件（仅限本书目录内的封面）
+        if let Some(old_path) = old_cover_path {
+            if old_path != relative_cover_path {
+                if let Some(old_file_name) = std::path::Path::new(&old_path).file_name() {
+                    let _ = fs::remove_file(book_dir.join(old_file_name));
+                }
+            }
+        }
+    }
+
+    if update_data.title.is_none()
+        && update_data.author.is_none()
+        && update_data.tags.is_none()
+        && update_data.cover_path.is_none()
+    {
         sqlx::query("UPDATE books SET updated_at = ? WHERE id = ?")
             .bind(now)
             .bind(&id)

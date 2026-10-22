@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDownloadImage } from "@/hooks/use-download-image";
-import type { BookWithStatusAndUrls } from "@/types/simple-book";
+import type { BookUpdateData, BookWithStatusAndUrls } from "@/types/simple-book";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Upload, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -14,12 +15,6 @@ interface EditInfoProps {
   isOpen: boolean;
   onClose: () => void;
   onSave?: (bookId: string, updates: BookUpdateData) => Promise<boolean>;
-}
-
-interface BookUpdateData {
-  title?: string;
-  author?: string;
-  coverPath?: string;
 }
 
 export default function EditInfo({ book, isOpen, onClose, onSave }: EditInfoProps) {
@@ -68,7 +63,8 @@ export default function EditInfo({ book, isOpen, onClose, onSave }: EditInfoProp
       if (selected && selected !== null) {
         const path = Array.isArray(selected) ? selected[0] : selected;
         setCoverPath(path);
-        setCoverPreview(path);
+        // 磁盘绝对路径不能直接作为 img src，需经 asset 协议转换后才能预览
+        setCoverPreview(convertFileSrc(path));
       } else {
         console.log("No file selected or dialog cancelled");
       }
@@ -105,6 +101,8 @@ export default function EditInfo({ book, isOpen, onClose, onSave }: EditInfoProp
       if (Object.keys(updates).length > 0) {
         const success = await onSave(book.id, updates);
         if (success) {
+          setCoverPath(null);
+          setCoverPreview(null);
           onClose();
         }
       } else {

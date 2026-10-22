@@ -43,6 +43,8 @@ export interface BookUpdateData {
   title?: string;
   author?: string;
   tags?: string[];
+  /** 新封面图片的本地绝对路径，后端会拷贝到书籍目录并更新 cover_path */
+  coverPath?: string;
 }
 
 export interface BookStatus {

@@ -1,5 +1,5 @@
 import { deleteBook, updateBook } from "@/services/book-service";
-import type { BookWithStatusAndUrls } from "@/types/simple-book";
+import type { BookUpdateData, BookWithStatusAndUrls } from "@/types/simple-book";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
@@ -20,7 +20,7 @@ export const useBooksOperations = (refreshBooks: () => Promise<void>) => {
   );
 
   const handleBookUpdate = useCallback(
-    async (bookId: string, updateData: { title?: string; author?: string; coverPath?: string; tags?: string[] }) => {
+    async (bookId: string, updateData: BookUpdateData) => {
       try {
         await updateBook(bookId, updateData);
         await refreshBooks();
