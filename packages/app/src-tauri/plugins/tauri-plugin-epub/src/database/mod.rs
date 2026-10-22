@@ -80,6 +80,8 @@ impl VectorDatabase {
     }
 
     /// 执行向量相似性搜索
+    /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn vector_search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         let search = DatabaseSearch::new(&self.db);
         search.vector_search(query_embedding, limit)
@@ -100,6 +102,8 @@ impl VectorDatabase {
 
     /// 执行混合搜索（BM25 + 向量搜索）
     /// include_references 为 false 时排除参考文献区段分片
+    /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn hybrid_search(
         &self,
         query: &str,
@@ -113,6 +117,8 @@ impl VectorDatabase {
     }
 
     /// 执行BM25文本搜索
+    /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn bm25_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let config = crate::models::HybridSearchConfig::default();
         let bm25_search = BM25Search::new(&self.db, config.k1, config.b);
@@ -153,6 +159,7 @@ impl VectorDatabase {
 
     /// 统一搜索接口，支持所有搜索模式
     /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn search_with_mode(
         &self,
         query: &str,

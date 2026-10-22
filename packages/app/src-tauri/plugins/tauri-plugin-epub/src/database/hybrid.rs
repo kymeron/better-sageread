@@ -17,6 +17,7 @@ impl<'a> HybridSearch<'a> {
 
     /// 执行混合搜索
     /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn search(
         &self,
         query: &str,

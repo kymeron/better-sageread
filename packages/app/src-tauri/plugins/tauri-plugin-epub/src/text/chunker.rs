@@ -115,7 +115,8 @@ impl TextChunker {
 
     /// 专门用于 Markdown 文件的智能分块方法
     /// 考虑 Markdown 格式特性：标题层级、段落边界、代码块等
-    /// 薄封装：丢掉参考文献标记，只返回分片文本
+    /// 薄封装：丢掉参考文献标记，只返回分片文本（生产路径已改用 flagged 版本，仅单测引用）
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn chunk_md_file(&self, md_content: &str, min_tokens: usize, max_tokens: usize) -> Vec<String> {
         self.chunk_md_file_flagged(md_content, min_tokens, max_tokens)
             .into_iter()

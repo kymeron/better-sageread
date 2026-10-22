@@ -20,6 +20,7 @@ impl<'a> BM25Search<'a> {
 
     /// 执行BM25搜索
     /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<BM25SearchResult>> {
         self.search_filtered(query, limit, None, true)
     }

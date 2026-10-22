@@ -96,12 +96,11 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
   const globalViewSettings = settings.globalViewSettings;
   // 论文显示模式（persist；旧持久化数据无此字段时回退原文）
   const viewMode: PaperViewMode = settings.paperViewMode ?? "original";
-  // 侧边栏高度与书籍阅读区同一算法（reader-layout）：横向顶栏 36px / 纵向顶条 32px，另加 p-1 与余量
-  // tabOrientation 必须 selector 订阅：整店订阅会被 activateTab 翻动（tabs/activeTabId 每次必变）
-  // 拖出 React.memo，三个保活实例全量重 reconcile——切 tab ~2s 长任务的直接元凶
-  const tabOrientation = useLayoutStore((s) => s.tabOrientation);
+  // 侧边栏高度与书籍阅读区同一算法（reader-layout）：直接撑满行高。
+  // 三栏式外框下必须与中间阅读区上下齐平（原先按标签栏高度硬算会差 4px，且不再需要 tag 方向：
+  // 原 tabOrientation selector 订阅只为算高度，已随硬算一起移除）
   const swapSidebars = useThemeStore((s) => s.swapSidebars);
-  const sidebarHeightClass = tabOrientation === "vertical" ? "h-[calc(100dvh-44px)]" : "h-[calc(100dvh-48px)]";
+  const sidebarHeightClass = "h-full";
 
   const [paperDir, setPaperDir] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string | null>(null);
@@ -737,10 +736,13 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
         handleStyles={{ left: { left: "0px" }, right: { right: "-6px" } }}
         className="h-full"
       >
-        {/* 与书籍 Notepad 同款包装：region 钩子 + 4px 间隙 + 顶栏对齐高度 */}
+        {/* 与书籍 Notepad 同款包装：region 钩子 + 4px 间隙 + 顶栏对齐高度；
+            三栏式外框：与中间阅读区同款 rounded-md + border + shadow-around */}
         <div
           data-region="notepad-panel"
-          className={swapSidebars ? `ml-1 ${sidebarHeightClass}` : `mr-1 ${sidebarHeightClass}`}
+          className={`overflow-hidden rounded-md border bg-background shadow-around ${
+            swapSidebars ? `ml-1 ${sidebarHeightClass}` : `mr-1 ${sidebarHeightClass}`
+          }`}
         >
           <PaperNotepadPanel
             annotations={annotations}
@@ -797,11 +799,12 @@ function PaperReaderView({ paperId, title, viewSleeping = false }: PaperReaderVi
         handleStyles={{ left: { left: "0px" }, right: { right: "-6px" } }}
         className="h-full"
       >
-        {/* 与书籍 SideChat 同款包装：四周 4px（顶部除外）间隙 + 顶栏对齐高度 */}
+        {/* 与书籍 SideChat 同款包装：四周 4px（顶部除外）间隙 + 顶栏对齐高度；
+            三栏式外框：与中间阅读区同款 rounded-md + border + shadow-around */}
         <div
-          className={
-            swapSidebars ? `mr-1 ${sidebarHeightClass} rounded-md` : `m-1 mt-0 ${sidebarHeightClass} rounded-md`
-          }
+          className={`overflow-hidden rounded-md border bg-background shadow-around ${
+            swapSidebars ? `mr-1 ${sidebarHeightClass}` : `ml-1 ${sidebarHeightClass}`
+          }`}
         >
           <PaperChatPanel paperId={paperId} paperTitle={title} folders={folders} members={members} />
         </div>

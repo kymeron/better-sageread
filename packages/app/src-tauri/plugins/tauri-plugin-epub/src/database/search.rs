@@ -17,6 +17,7 @@ impl<'a> DatabaseSearch<'a> {
 
     /// 执行向量相似性搜索
     /// 旧封装：不过滤参考文献区段（行为不变）
+    #[allow(dead_code)]
     pub fn vector_search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         self.vector_search_filtered(query_embedding, limit, None, true)
     }

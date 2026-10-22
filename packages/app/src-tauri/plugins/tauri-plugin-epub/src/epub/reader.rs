@@ -160,6 +160,8 @@ impl EpubReader {
 
     /// 专门用于 Markdown 文件的智能分块方法
     /// 考虑 Markdown 格式特性：标题层级、段落边界、代码块等
+    /// 旧封装：丢弃参考文献标记，保留供外部调用方兼容
+    #[allow(dead_code)]
     pub fn chunk_md_file(&self, md_content: &str, min_tokens: usize, max_tokens: usize) -> Vec<String> {
         self.chunker.chunk_md_file(md_content, min_tokens, max_tokens)
     }
@@ -183,7 +185,6 @@ impl EpubReader {
         struct FlatEntry {
             title: String,
             norm_title: String,
-            page_path: Option<String>,
             page_index: Option<usize>,
             depth: usize,
         }
@@ -244,7 +245,6 @@ impl EpubReader {
                 title: t.clone(),
                 norm_title: norm_title(t),
                 page_index: page_of(p),
-                page_path: if p.is_empty() { None } else { Some(p.clone()) },
                 depth: *d,
             })
             .collect();
@@ -260,7 +260,6 @@ impl EpubReader {
                         entries.push(FlatEntry {
                             norm_title: norm_title(&t),
                             title: t,
-                            page_path: None,
                             page_index: Some(i),
                             depth: 0,
                         });
@@ -319,7 +318,7 @@ impl EpubReader {
             }
             Some((start, end))
         };
-        let mut extract = |start: usize, end: usize, doc: &mut EpubDoc<std::io::BufReader<std::fs::File>>| -> String {
+        let extract = |start: usize, end: usize, doc: &mut EpubDoc<std::io::BufReader<std::fs::File>>| -> String {
             let mut text = String::new();
             for i in start..end {
                 let _ = doc.set_current_page(i);

@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAutoPreview } from "@/hooks/use-auto-preview";
 import { useChatState } from "@/hooks/use-chat-state";
 import { exportMessagesToHtml } from "@/lib/export-thread-html";
@@ -8,16 +6,7 @@ import { exportMessagesToMarkdown } from "@/lib/export-thread-markdown";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { clearLiveReadingPosition, setLiveReadingPosition } from "@/services/reading-position/live-position";
 import { useThemeStore } from "@/store/theme-store";
-import {
-  CircleQuestionMark,
-  History,
-  Lightbulb,
-  ListChecks,
-  MessageCirclePlus,
-  ScrollText,
-  Search,
-  UserSearch,
-} from "lucide-react";
+import { CircleQuestionMark, Lightbulb, ScrollText, Search, UserSearch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
@@ -26,6 +15,7 @@ import { AgentConfirmCard } from "./agent-confirm-card";
 import { ChatInputArea } from "./chat-input-area";
 import { ChatMessages } from "./chat-messages";
 import { ChatThreads } from "./chat-threads";
+import { PanelActions } from "./panel-actions";
 import { SelectionExportBar } from "./selection-export-bar";
 import { useMessageSelection } from "./use-message-selection";
 
@@ -195,55 +185,7 @@ function ChatContent({ bookId }: ChatContentProps) {
 
   return (
     <main id="chat-sidebar" data-region="chat-panel" className="relative flex h-full flex-col overflow-hidden ">
-      <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
-        <div className="flex h-8 items-center justify-end">
-          <div className="flex flex-shrink-0 items-center gap-0">
-            {messages.length > 0 && !showThreads && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`z-40 size-7 rounded-full hover:bg-accent dark:hover:bg-accent ${
-                      selectionMode ? "bg-accent dark:bg-accent" : ""
-                    }`}
-                    onClick={toggleSelectionMode}
-                  >
-                    <ListChecks className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">选择导出</TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="z-40 size-7 rounded-full hover:bg-accent dark:hover:bg-accent"
-                  onClick={handleNewThread}
-                >
-                  <MessageCirclePlus className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">新对话</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="z-40 size-7 rounded-full hover:bg-accent dark:hover:bg-accent"
-                  onClick={handleShowThreads}
-                >
-                  <History className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">历史对话</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-      </div>
+      {/* 头部整行已下移（2026-10-22）：对话操作进输入框顶行右侧，首屏整块让给消息区 */}
       {showThreads && bookId ? (
         <div className="min-h-0 flex-1">
           <ChatThreads
@@ -320,6 +262,15 @@ function ChatContent({ bookId }: ChatContentProps) {
             setActiveBookId={() => {}}
             selectedModel={selectedModel}
             onModelSelect={setSelectedModel}
+            panelActions={
+              <PanelActions
+                showSelection={messages.length > 0}
+                selectionMode={selectionMode}
+                onToggleSelection={toggleSelectionMode}
+                onNewThread={handleNewThread}
+                onShowThreads={handleShowThreads}
+              />
+            }
           />
         </>
       )}

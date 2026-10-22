@@ -200,6 +200,7 @@ fn system_proxy_url() -> Option<String> {
 /// - "http=h1;https=h2;ftp=..."（分协议形式）→ 优先 https 项，退化 http 项；
 ///   仅 socks 等其他协议 → None（不注入，避免把 socks 地址错标成 http 代理）；
 /// - 已带 scheme 的值原样保留；空串/无有效项 → None。
+#[cfg_attr(not(windows), allow(dead_code))]
 fn parse_proxy_server(raw: &str) -> Option<String> {
     fn with_scheme(value: &str) -> Option<String> {
         let v = value.trim();

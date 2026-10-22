@@ -166,8 +166,6 @@ fn mtime_ms(path: &Path) -> u64 {
 struct Bundle {
     kind: &'static str,
     name: String,
-    /// 恢复落盘的目标目录（包内相对路径以其为根）
-    target_dir: PathBuf,
     /// (绝对路径, 包内相对路径)
     files: Vec<(PathBuf, String)>,
     /// 内容清单哈希（全部文件 rel:sha256 组合哈希）
@@ -243,7 +241,6 @@ fn bundle_from_dir(
     Ok(Some(Bundle {
         kind,
         name,
-        target_dir,
         files,
         content_hash: sha256_hex(lines.as_bytes()),
     }))
@@ -296,7 +293,6 @@ fn collect_bundles(app: &AppHandle, config_dir: &Path) -> Result<(Vec<Bundle>, A
             bundles.push(Bundle {
                 kind: "vectors",
                 name: "vectors".to_string(),
-                target_dir: app_data.join("papers"),
                 files: vec![(snapshot, "vectors.sqlite".to_string())],
                 content_hash: sha,
             });

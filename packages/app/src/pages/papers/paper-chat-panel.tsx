@@ -6,6 +6,7 @@ import { AgentConfirmCard } from "@/components/side-chat/agent-confirm-card";
 import { ChatInputArea } from "@/components/side-chat/chat-input-area";
 import { ChatMessages } from "@/components/side-chat/chat-messages";
 import { ChatThreads } from "@/components/side-chat/chat-threads";
+import { PanelActions } from "@/components/side-chat/panel-actions";
 import { SelectionExportBar } from "@/components/side-chat/selection-export-bar";
 import { useMessageSelection } from "@/components/side-chat/use-message-selection";
 import { MindmapDialog } from "@/components/tools/mindmap-dialog";
@@ -21,7 +22,7 @@ import { exportMessagesToMarkdown } from "@/lib/export-thread-markdown";
 import { type Folder, type FolderTreeNode, type PaperFolderEntry, buildFolderTree } from "@/services/paper-service";
 import { useThemeStore } from "@/store/theme-store";
 import type { Thread } from "@/types/thread";
-import { FileText, Folder as FolderIcon, History, ListChecks, MessageCirclePlus } from "lucide-react";
+import { FileText, Folder as FolderIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 /** 聊天检索作用域：本篇论文 / 某个所属文件夹（含子文件夹）/ 全部文献 / 自定义文件夹集合 */
@@ -204,6 +205,32 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
     setCustomDialogOpen(false);
   };
 
+  /** 检索作用域选择器（原面板头部，2026-10-22 下移进输入框顶行左侧） */
+  const scopeSelector = (
+    <Select value={scopeValue} onValueChange={handleScopeChange}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SelectTrigger className="h-7 w-[9.5rem] min-w-0 shrink text-xs">
+            <SelectValue />
+          </SelectTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">paperSearch 的检索范围（需已向量化）</TooltipContent>
+      </Tooltip>
+      <SelectContent>
+        <SelectItem value="paper">本篇论文</SelectItem>
+        {containingFolders.map((folder) => (
+          <SelectItem key={folder.id} value={`folder:${folder.id}`}>
+            文件夹：{folder.name}（含子文件夹）
+          </SelectItem>
+        ))}
+        <SelectItem value="all">全部文献</SelectItem>
+        <SelectItem value="custom">
+          自定义文件夹…{scope.kind === "custom" ? `（已选 ${scope.folderIds.length}）` : ""}
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+
   const EmptyState = () => (
     <div className="flex h-full w-full flex-col overflow-y-auto overflow-x-hidden p-2 pb-8">
       <div className="flex flex-1 flex-col justify-center gap-3">
@@ -242,82 +269,8 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
   return (
     <CitationFallbackContext.Provider value={citationFallback}>
       <main id="paper-chat-panel" data-region="chat-panel" className="relative flex h-full flex-col overflow-hidden">
-        {/* 头部：模型/检索作用域选择器 + 对话操作（结构与书籍 SideChat 头部一致；
-          面板折叠开关由 PaperHeaderBar 统一负责，书籍同款） */}
-        <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
-          <div className="flex h-8 items-center justify-between">
-            <div className="flex min-w-0 items-center gap-2 pl-0.5">
-              <Select value={scopeValue} onValueChange={handleScopeChange}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <SelectTrigger className="h-7 w-[9.5rem] min-w-0 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">paperSearch 的检索范围（需已向量化）</TooltipContent>
-                </Tooltip>
-                <SelectContent>
-                  <SelectItem value="paper">本篇论文</SelectItem>
-                  {containingFolders.map((folder) => (
-                    <SelectItem key={folder.id} value={`folder:${folder.id}`}>
-                      文件夹：{folder.name}（含子文件夹）
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="all">全部文献</SelectItem>
-                  <SelectItem value="custom">
-                    自定义文件夹…{scope.kind === "custom" ? `（已选 ${scope.folderIds.length}）` : ""}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-0">
-              {messages.length > 0 && !showThreads && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`z-40 size-7 shrink-0 rounded-full hover:bg-accent dark:hover:bg-accent ${
-                        selectionMode ? "bg-accent dark:bg-accent" : ""
-                      }`}
-                      onClick={toggleSelectionMode}
-                    >
-                      <ListChecks className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">选择导出</TooltipContent>
-                </Tooltip>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="z-40 size-7 shrink-0 rounded-full hover:bg-accent dark:hover:bg-accent"
-                    onClick={handleNewThread}
-                  >
-                    <MessageCirclePlus className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">新对话</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="z-40 size-7 shrink-0 rounded-full hover:bg-accent dark:hover:bg-accent"
-                    onClick={handleShowThreads}
-                  >
-                    <History className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">历史对话</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-        </div>
-
+        {/* 头部已下移（2026-10-22）：检索作用域与对话操作都进了输入框顶行，
+            面板首屏整块让给消息区（面板折叠开关由 PaperHeaderBar 统一负责，书籍同款） */}
         {showThreads ? (
           <div className="min-h-0 flex-1">
             <ChatThreads
@@ -395,6 +348,16 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
               agentScope="paper"
               selectedModel={selectedModel}
               onModelSelect={setSelectedModel}
+              scopeSelector={scopeSelector}
+              panelActions={
+                <PanelActions
+                  showSelection={messages.length > 0}
+                  selectionMode={selectionMode}
+                  onToggleSelection={toggleSelectionMode}
+                  onNewThread={handleNewThread}
+                  onShowThreads={handleShowThreads}
+                />
+              }
             />
           </>
         )}

@@ -139,9 +139,12 @@ const BookTabLayer = memo(function BookTabLayer({
         onResize={handleResizeStart}
         onResizeStop={handleResizeStop}
       >
+        {/* 三栏式：每个面板独立带外框（与中间阅读区同款 rounded-md + border + shadow-around） */}
         <div
           data-region="notepad-panel"
-          className={swapSidebars ? `ml-1 ${sidebarHeightClass}` : `mr-1 ${sidebarHeightClass}`}
+          className={`overflow-hidden rounded-md border bg-background shadow-around ${
+            swapSidebars ? `ml-1 ${sidebarHeightClass}` : `mr-1 ${sidebarHeightClass}`
+          }`}
         >
           <NotepadContainer bookId={bookId} />
         </div>
@@ -180,9 +183,9 @@ const BookTabLayer = memo(function BookTabLayer({
         onResizeStop={handleResizeStop}
       >
         <div
-          className={
-            swapSidebars ? `mr-1 ${sidebarHeightClass} rounded-md` : `m-1 mt-0 ${sidebarHeightClass} rounded-md`
-          }
+          className={`overflow-hidden rounded-md border bg-background shadow-around ${
+            swapSidebars ? `mr-1 ${sidebarHeightClass}` : `ml-1 ${sidebarHeightClass}`
+          }`}
         >
           <SideChat key={`chat-${bookId}`} bookId={bookId} />
         </div>
@@ -246,8 +249,9 @@ export default function ReaderLayout() {
 
   const isWindows = getOSPlatform() === "windows";
   const isVertical = tabOrientation === "vertical";
-  // 侧边栏高度：横向模式标签栏 36px，纵向模式窄顶条 32px，另加 main 的 p-1 和余量
-  const sidebarHeightClass = isVertical ? "h-[calc(100dvh-44px)]" : "h-[calc(100dvh-48px)]";
+  // 侧边栏高度：直接撑满行高。三栏式外框下必须与中间阅读区上下齐平——
+  // 原先按标签栏高度硬算（44/48px）会比行高少 4px，加了边线后能看出两侧栏比中间矮一截
+  const sidebarHeightClass = "h-full";
 
   // ─── P2 标签页休眠（性能优化，2026-08-08）───
   // 只卸重型阅读视图（论文 PaperReader / 书籍 ReaderViewer），侧栏与聊天保活（护流式任务）；
