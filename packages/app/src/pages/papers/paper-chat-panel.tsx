@@ -6,6 +6,7 @@ import { AgentConfirmCard } from "@/components/side-chat/agent-confirm-card";
 import { ChatInputArea } from "@/components/side-chat/chat-input-area";
 import { ChatMessages } from "@/components/side-chat/chat-messages";
 import { ChatThreads } from "@/components/side-chat/chat-threads";
+import ModelSelector from "@/components/side-chat/model-selector";
 import { PanelActions } from "@/components/side-chat/panel-actions";
 import { SelectionExportBar } from "@/components/side-chat/selection-export-bar";
 import { useMessageSelection } from "@/components/side-chat/use-message-selection";
@@ -205,12 +206,12 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
     setCustomDialogOpen(false);
   };
 
-  /** 检索作用域选择器（原面板头部，2026-10-22 下移进输入框顶行左侧） */
+  /** 检索作用域选择器（渲染在输入框内顶行左侧，把面板头部的宽度留给模型选择器） */
   const scopeSelector = (
     <Select value={scopeValue} onValueChange={handleScopeChange}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <SelectTrigger className="h-7 w-[9.5rem] min-w-0 shrink text-xs">
+          <SelectTrigger className="h-7 w-[10.5rem] min-w-0 text-xs">
             <SelectValue />
           </SelectTrigger>
         </TooltipTrigger>
@@ -269,8 +270,27 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
   return (
     <CitationFallbackContext.Provider value={citationFallback}>
       <main id="paper-chat-panel" data-region="chat-panel" className="relative flex h-full flex-col overflow-hidden">
-        {/* 头部已下移（2026-10-22）：检索作用域与对话操作都进了输入框顶行，
-            面板首屏整块让给消息区（面板折叠开关由 PaperHeaderBar 统一负责，书籍同款） */}
+        {/* 头部：模型 / 检索作用域选择器 + 对话操作（结构与书籍 SideChat 头部一致；
+          面板折叠开关由 PaperHeaderBar 统一负责，书籍同款） */}
+        <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
+          <div className="flex h-8 items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 pl-0.5">
+              <ModelSelector
+                selectedModel={selectedModel}
+                onModelSelect={setSelectedModel}
+                className="z-40 min-w-0 max-w-64 flex-1"
+              />
+            </div>
+            <PanelActions
+              showSelection={messages.length > 0 && !showThreads}
+              selectionMode={selectionMode}
+              onToggleSelection={toggleSelectionMode}
+              onNewThread={handleNewThread}
+              onShowThreads={handleShowThreads}
+            />
+          </div>
+        </div>
+
         {showThreads ? (
           <div className="min-h-0 flex-1">
             <ChatThreads
@@ -348,16 +368,8 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
               agentScope="paper"
               selectedModel={selectedModel}
               onModelSelect={setSelectedModel}
+              hideModelSelector
               scopeSelector={scopeSelector}
-              panelActions={
-                <PanelActions
-                  showSelection={messages.length > 0}
-                  selectionMode={selectionMode}
-                  onToggleSelection={toggleSelectionMode}
-                  onNewThread={handleNewThread}
-                  onShowThreads={handleShowThreads}
-                />
-              }
             />
           </>
         )}

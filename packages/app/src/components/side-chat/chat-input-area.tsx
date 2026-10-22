@@ -46,9 +46,9 @@ interface ChatInputAreaProps {
   /** 模型选择（2026-10-22 从面板头部移入输入框工具条，换模型不必把视线拉回顶部） */
   selectedModel: SelectedModel | null;
   onModelSelect: (model: SelectedModel) => void;
-  /** 面板操作组（选择导出/新对话/历史对话）：与快捷指令同行、靠右（2026-10-22 从面板头部下移并合并） */
-  panelActions?: ReactNode;
-  /** 检索作用域选择器（论文面板，原面板头部）：渲染在输入框内顶行左侧 */
+  /** 面板头部已自带模型选择器时置 true，工具条不再重复渲染胶囊（论文/书籍阅读面板） */
+  hideModelSelector?: boolean;
+  /** 检索作用域选择器（论文面板）：渲染在输入框内顶行左侧，让面板头部的模型选择器有整行宽度 */
   scopeSelector?: ReactNode;
 }
 
@@ -75,7 +75,7 @@ export function ChatInputArea({
   setInput,
   selectedModel,
   onModelSelect,
-  panelActions,
+  hideModelSelector = false,
   scopeSelector,
 }: ChatInputAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -192,27 +192,25 @@ export function ChatInputArea({
   return (
     <div className="z-10 shrink-0 px-2 pb-1.5">
       {!isChatPage && (
-        // 快捷指令与面板操作组同行：左=快捷指令，右=选择导出/新对话/历史对话（2026-10-22 合并成一行）。
-        // 快捷指令同样只露图标、悬停出 tooltip，与右侧三个操作视觉一致
         <div className="flex items-center justify-between gap-2 py-2">
-          <div className="flex flex-wrap items-center gap-0.5">
+          <div className="flex flex-wrap items-center gap-2">
             {quickActions.map(({ id, label, prompt, icon }) => {
               const Icon = getCommandIcon(icon);
               return (
                 <PromptInputAction key={id} tooltip={label}>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0 rounded-full hover:bg-accent dark:hover:bg-accent"
+                    variant="glow"
+                    className="h-7 cursor-pointer"
+                    size="sm"
                     onClick={() => handleQuickPrompt(prompt)}
                   >
                     <Icon className="size-4" />
+                    {!showToolDetail && <span className="text-xs">{label}</span>}
                   </Button>
                 </PromptInputAction>
               );
             })}
           </div>
-          {panelActions}
         </div>
       )}
       <div ref={promptBoxRef} className={wideChatLayout ? "mx-auto w-full" : "mx-auto max-w-3xl"}>
@@ -237,7 +235,7 @@ export function ChatInputArea({
             dragOver ? "ring-2 ring-primary/60 ring-offset-1" : ""
           }`}
         >
-          {/* 框内顶行：检索作用域（论文面板）。面板操作组已与快捷指令并到框外同一行 */}
+          {/* 框内顶行：检索作用域（论文面板）。放这里是为了让面板头部的模型选择器独占整行宽度 */}
           {scopeSelector && <div className="flex min-w-0 items-center gap-2 pt-1 pb-0.5">{scopeSelector}</div>}
           {/* Phase A 文件附件 chips（⟦文件N⟧ 标记在正文中定位；删 chip 同步清标记） */}
           {files.length > 0 && (
@@ -394,12 +392,14 @@ export function ChatInputArea({
                   <Paperclip className="size-4" />
                 </Button>
               </PromptInputAction>
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelSelect={onModelSelect}
-                variant="pill"
-                className="min-w-0 max-w-40"
-              />
+              {!hideModelSelector && (
+                <ModelSelector
+                  selectedModel={selectedModel}
+                  onModelSelect={onModelSelect}
+                  variant="pill"
+                  className="min-w-0 max-w-40"
+                />
+              )}
               <SearchEngineSelector />
               <ReasoningLevelSelector />
             </div>

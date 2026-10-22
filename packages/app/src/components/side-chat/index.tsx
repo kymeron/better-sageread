@@ -15,6 +15,7 @@ import { AgentConfirmCard } from "./agent-confirm-card";
 import { ChatInputArea } from "./chat-input-area";
 import { ChatMessages } from "./chat-messages";
 import { ChatThreads } from "./chat-threads";
+import ModelSelector from "./model-selector";
 import { PanelActions } from "./panel-actions";
 import { SelectionExportBar } from "./selection-export-bar";
 import { useMessageSelection } from "./use-message-selection";
@@ -185,7 +186,24 @@ function ChatContent({ bookId }: ChatContentProps) {
 
   return (
     <main id="chat-sidebar" data-region="chat-panel" className="relative flex h-full flex-col overflow-hidden ">
-      {/* 头部整行已下移（2026-10-22）：对话操作进输入框顶行右侧，首屏整块让给消息区 */}
+      <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
+        <div className="flex h-8 items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 pl-0.5">
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelSelect={setSelectedModel}
+              className="z-40 min-w-0 max-w-64 flex-1"
+            />
+          </div>
+          <PanelActions
+            showSelection={messages.length > 0 && !showThreads}
+            selectionMode={selectionMode}
+            onToggleSelection={toggleSelectionMode}
+            onNewThread={handleNewThread}
+            onShowThreads={handleShowThreads}
+          />
+        </div>
+      </div>
       {showThreads && bookId ? (
         <div className="min-h-0 flex-1">
           <ChatThreads
@@ -262,15 +280,7 @@ function ChatContent({ bookId }: ChatContentProps) {
             setActiveBookId={() => {}}
             selectedModel={selectedModel}
             onModelSelect={setSelectedModel}
-            panelActions={
-              <PanelActions
-                showSelection={messages.length > 0}
-                selectionMode={selectionMode}
-                onToggleSelection={toggleSelectionMode}
-                onNewThread={handleNewThread}
-                onShowThreads={handleShowThreads}
-              />
-            }
+            hideModelSelector
           />
         </>
       )}
