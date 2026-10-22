@@ -18,6 +18,8 @@ interface ModelSelectorProps {
   onModelSelect: (model: SelectedModel) => void;
   className?: string;
   placeholder?: string;
+  /** default：面板头部整宽形态；pill：输入框底部工具条的胶囊形态（与搜索引擎/思考强度选择器同款） */
+  variant?: "default" | "pill";
 }
 
 export default function ModelSelector({
@@ -25,6 +27,7 @@ export default function ModelSelector({
   onModelSelect,
   className,
   placeholder = "选择模型",
+  variant = "default",
 }: ModelSelectorProps) {
   const { modelProviders } = useProviderStore();
   const [searchTerm, setSearchTerm] = useState("");
@@ -103,11 +106,14 @@ export default function ModelSelector({
       <DropdownMenuTrigger asChild>
         <div
           className={cn(
-            "flex h-8 w-full min-w-0 cursor-pointer select-none items-center justify-between gap-2 overflow-hidden rounded-2xl border bg-background px-3 font-normal text-sm dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-neutral-600",
+            "flex h-8 min-w-0 cursor-pointer select-none items-center overflow-hidden border font-normal",
+            variant === "pill"
+              ? "gap-1 rounded-full border-neutral-200 px-2 text-neutral-600 transition-colors hover:bg-accent hover:text-accent-foreground dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-accent-foreground"
+              : "w-full justify-between gap-2 rounded-2xl bg-background px-3 text-sm dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-neutral-600",
             className,
           )}
         >
-          <div className="flex min-w-0 items-center gap-2 truncate">
+          <div className={cn("flex min-w-0 items-center truncate", variant === "pill" ? "gap-1.5" : "gap-2")}>
             {selectedModel ? (
               <>
                 {getProviderIcon(selectedModel.providerId)}

@@ -19,6 +19,7 @@ import { useChatState } from "@/hooks/use-chat-state";
 import { useChatReaderStore } from "@/store/chat-reader-store";
 import { useChatSettingsStore } from "@/store/chat-settings-store";
 import { usePreviewStore } from "@/store/preview-store";
+import type { SelectedModel } from "@/store/provider-store";
 import { useQuickCommandStore } from "@/store/quick-command-store";
 import { useThemeStore } from "@/store/theme-store";
 import { Brain, History, MessageCirclePlus, Paperclip, StretchHorizontal, X } from "lucide-react";
@@ -35,10 +36,23 @@ interface EmptyStateProps {
   /** J2/K2：空状态输入框也参与标记插入与图片附件 */
   onInputEl?: (el: HTMLTextAreaElement | null) => void;
   onAddImageFiles?: (files: File[]) => void;
+  /** 模型选择（空状态没有 ChatInputArea，工具条自带一份，否则首屏无法换模型） */
+  selectedModel: SelectedModel | null;
+  onModelSelect: (model: SelectedModel) => void;
 }
 
 const EmptyState = memo(
-  ({ input, setInput, handleSubmit, stop, status, onInputEl, onAddImageFiles }: EmptyStateProps) => {
+  ({
+    input,
+    setInput,
+    handleSubmit,
+    stop,
+    status,
+    onInputEl,
+    onAddImageFiles,
+    selectedModel,
+    onModelSelect,
+  }: EmptyStateProps) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const promptBoxRef = useRef<HTMLDivElement>(null);
     const commands = useQuickCommandStore((s) => s.commands);
@@ -104,6 +118,12 @@ const EmptyState = memo(
                       <Paperclip className="size-4" />
                     </Button>
                   </PromptInputAction>
+                  <ModelSelector
+                    selectedModel={selectedModel}
+                    onModelSelect={onModelSelect}
+                    variant="pill"
+                    className="max-w-52 flex-shrink-0"
+                  />
                   <SearchEngineSelector />
                 </div>
 
@@ -329,7 +349,6 @@ function ChatPage() {
               >
                 <History className="size-5" />
               </Button>
-              <ModelSelector selectedModel={selectedModel} onModelSelect={setSelectedModel} className="max-w-60" />
             </div>
             <div className="flex items-center gap-2">
               {/* 宽版布局快捷切换：消息列/输入区放宽至自适应版面宽度（用户 2026-08-09 拍板：仅全局助手提供） */}
@@ -368,6 +387,8 @@ function ChatPage() {
                 status={status}
                 onInputEl={registerInputEl}
                 onAddImageFiles={handleAddImageFiles}
+                selectedModel={selectedModel}
+                onModelSelect={setSelectedModel}
               />
             ) : (
               <>
@@ -422,6 +443,8 @@ function ChatPage() {
                       setActiveBookId={setActiveBookId}
                       showToolDetail={showToolDetail}
                       isChatPage
+                      selectedModel={selectedModel}
+                      onModelSelect={setSelectedModel}
                     />
                   </div>
                 </div>

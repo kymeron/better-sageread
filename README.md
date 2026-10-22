@@ -135,6 +135,15 @@ pnpm dev        # 开发模式
 pnpm build      # 出安装包（packages/app/src-tauri/target/release/bundle/）
 ```
 
+**Fork 开发**（远程指向自己的 fork，上游仓库留作同步源）：
+
+```bash
+git remote set-url origin https://github.com/kymeron/better-sageread.git   # 换成你的 fork 地址
+git remote add upstream https://github.com/Feplus2/better-sageread.git     # 上游，只 fetch 不 push
+git fetch upstream
+git merge upstream/main                                                    # 或 git rebase upstream/main
+```
+
 更多开发细节见 [wiki/06 开发工作流](wiki/06-dev-workflow.md)。
 
 ## 📄 许可证

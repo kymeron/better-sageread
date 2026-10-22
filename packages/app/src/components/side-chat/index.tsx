@@ -26,7 +26,6 @@ import { AgentConfirmCard } from "./agent-confirm-card";
 import { ChatInputArea } from "./chat-input-area";
 import { ChatMessages } from "./chat-messages";
 import { ChatThreads } from "./chat-threads";
-import ModelSelector from "./model-selector";
 import { SelectionExportBar } from "./selection-export-bar";
 import { useMessageSelection } from "./use-message-selection";
 
@@ -197,14 +196,7 @@ function ChatContent({ bookId }: ChatContentProps) {
   return (
     <main id="chat-sidebar" data-region="chat-panel" className="relative flex h-full flex-col overflow-hidden ">
       <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
-        <div className="flex h-8 items-center justify-between">
-          <div className="flex min-w-0 items-center gap-2 pl-0.5">
-            <ModelSelector
-              selectedModel={selectedModel}
-              onModelSelect={setSelectedModel}
-              className="z-40 w-[10rem] min-w-0 flex-shrink"
-            />
-          </div>
+        <div className="flex h-8 items-center justify-end">
           <div className="flex flex-shrink-0 items-center gap-0">
             {messages.length > 0 && !showThreads && (
               <Tooltip>
@@ -326,6 +318,8 @@ function ChatContent({ bookId }: ChatContentProps) {
             status={status}
             activeBookId={bookId}
             setActiveBookId={() => {}}
+            selectedModel={selectedModel}
+            onModelSelect={setSelectedModel}
           />
         </>
       )}

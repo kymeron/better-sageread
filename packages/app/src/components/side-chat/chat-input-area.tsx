@@ -2,6 +2,7 @@ import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/component
 import { Button } from "@/components/ui/button";
 import { formatAttachmentSize } from "@/hooks/use-chat-state";
 import { useChatSettingsStore } from "@/store/chat-settings-store";
+import type { SelectedModel } from "@/store/provider-store";
 import { type AgentScope, useQuickCommandStore } from "@/store/quick-command-store";
 import type { ChatReference, FileAttachment, ImageAttachment } from "@/types/message";
 import { readFile } from "@tauri-apps/plugin-fs";
@@ -9,6 +10,7 @@ import { ArrowUp, FileText, Paperclip, Quote, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getCommandIcon } from "./command-icons";
 import { ContextPopover } from "./context-popover";
+import ModelSelector from "./model-selector";
 import { ReasoningLevelSelector } from "./reasoning-level-selector";
 import { SearchEngineSelector } from "./search-engine-selector";
 import { WorkspaceChip } from "./workspace-chip";
@@ -41,6 +43,9 @@ interface ChatInputAreaProps {
   onSubmit: (promptOverride?: string) => Promise<void>;
   onStop: () => void;
   setActiveBookId: (bookId: string | undefined) => void;
+  /** 模型选择（2026-10-22 从面板头部移入输入框工具条，换模型不必把视线拉回顶部） */
+  selectedModel: SelectedModel | null;
+  onModelSelect: (model: SelectedModel) => void;
 }
 
 export function ChatInputArea({
@@ -64,6 +69,8 @@ export function ChatInputArea({
   onSubmit,
   onStop,
   setInput,
+  selectedModel,
+  onModelSelect,
 }: ChatInputAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const promptBoxRef = useRef<HTMLDivElement>(null);
@@ -351,7 +358,7 @@ export function ChatInputArea({
             }}
           />
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -376,6 +383,12 @@ export function ChatInputArea({
                   <Paperclip className="size-4" />
                 </Button>
               </PromptInputAction>
+              <ModelSelector
+                selectedModel={selectedModel}
+                onModelSelect={onModelSelect}
+                variant="pill"
+                className="min-w-0 max-w-40"
+              />
               <SearchEngineSelector />
               <ReasoningLevelSelector />
             </div>

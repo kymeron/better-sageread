@@ -6,7 +6,6 @@ import { AgentConfirmCard } from "@/components/side-chat/agent-confirm-card";
 import { ChatInputArea } from "@/components/side-chat/chat-input-area";
 import { ChatMessages } from "@/components/side-chat/chat-messages";
 import { ChatThreads } from "@/components/side-chat/chat-threads";
-import ModelSelector from "@/components/side-chat/model-selector";
 import { SelectionExportBar } from "@/components/side-chat/selection-export-bar";
 import { useMessageSelection } from "@/components/side-chat/use-message-selection";
 import { MindmapDialog } from "@/components/tools/mindmap-dialog";
@@ -248,11 +247,6 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
         <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
           <div className="flex h-8 items-center justify-between">
             <div className="flex min-w-0 items-center gap-2 pl-0.5">
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelSelect={setSelectedModel}
-                className="z-40 w-[10rem] min-w-0 flex-shrink"
-              />
               <Select value={scopeValue} onValueChange={handleScopeChange}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -399,6 +393,8 @@ export function PaperChatPanel({ paperId, paperTitle, folders, members }: PaperC
               activeBookId={paperId}
               setActiveBookId={() => {}}
               agentScope="paper"
+              selectedModel={selectedModel}
+              onModelSelect={setSelectedModel}
             />
           </>
         )}
