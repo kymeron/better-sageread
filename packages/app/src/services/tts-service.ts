@@ -1,4 +1,4 @@
-import { useTTSStore } from "@/store/tts-store";
+import { TTS_PROVIDER_DEFAULTS, useTTSStore } from "@/store/tts-store";
 import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
 
 interface TTSOptions {
@@ -16,11 +16,32 @@ interface TTSResponse {
   request_id: string;
 }
 
+interface MiniMaxTTSResponse {
+  data: {
+    audio: string;
+    status?: number;
+  } | null;
+  base_resp?: {
+    status_code: number;
+    status_msg: string;
+  };
+}
+
 const getTTSConfig = () => {
   return useTTSStore.getState().config;
 };
 
-const MAX_CHARACTERS = 500;
+const DASHSCOPE_TTS_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+const MINIMAX_TTS_URL = "https://api.minimax.cn/v1/t2a_v2";
+
+/** DashScope qwen3-tts 单次请求字符上限（中文按 2 计） */
+const DASHSCOPE_MAX_CHARACTERS = 500;
+/** MiniMax T2A 单次请求上限 10000 字符，留足余量 */
+const MINIMAX_MAX_CHARACTERS = 2000;
+
+function getMaxCharacters(provider: string): number {
+  return provider === "minimax" ? MINIMAX_MAX_CHARACTERS : DASHSCOPE_MAX_CHARACTERS;
+}
 
 function cleanTextForTTS(text: string): string {
   return text
@@ -117,26 +138,23 @@ function truncateText(text: string, maxChars: number): string {
   return result;
 }
 
-async function synthesizeSingleChunk(text: string, voice: string, languageType: string): Promise<string> {
+async function synthesizeDashscopeChunk(text: string, voice: string, languageType: string): Promise<string> {
   const config = getTTSConfig();
-  const response = await fetchTauri(
-    "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "qwen3-tts-flash",
-        input: {
-          text,
-          voice,
-          language_type: languageType,
-        },
-      }),
+  const response = await fetchTauri(DASHSCOPE_TTS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      model: config.model || TTS_PROVIDER_DEFAULTS.dashscope.model,
+      input: {
+        text,
+        voice,
+        language_type: languageType,
+      },
+    }),
+  });
 
   if (!response.ok) {
     throw new Error(`TTS API调用失败: ${response.statusText}`);
@@ -146,11 +164,66 @@ async function synthesizeSingleChunk(text: string, voice: string, languageType: 
   return data.output.audio.url.replace("http://", "https://");
 }
 
+async function synthesizeMinimaxChunk(text: string, voice: string, languageType: string): Promise<string> {
+  const config = getTTSConfig();
+  const response = await fetchTauri(MINIMAX_TTS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model || TTS_PROVIDER_DEFAULTS.minimax.model,
+      text,
+      stream: false,
+      // 非流式可用 url，直接拿到 24 小时有效期的音频地址（默认 hex 需要本地转码）
+      output_format: "url",
+      language_boost: languageType,
+      voice_setting: {
+        voice_id: voice,
+        speed: 1,
+        vol: 1,
+        pitch: 0,
+      },
+      audio_setting: {
+        sample_rate: 32000,
+        bitrate: 128000,
+        format: "mp3",
+        channel: 1,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`TTS API调用失败: ${response.statusText}`);
+  }
+
+  const data: MiniMaxTTSResponse = await response.json();
+  const statusCode = data.base_resp?.status_code;
+  if (statusCode !== undefined && statusCode !== 0) {
+    throw new Error(`TTS API调用失败: ${data.base_resp?.status_msg || statusCode}`);
+  }
+
+  const audioUrl = data.data?.audio;
+  if (!audioUrl) {
+    throw new Error("TTS API调用失败: 未返回音频地址");
+  }
+  return audioUrl.replace("http://", "https://");
+}
+
+async function synthesizeSingleChunk(text: string, voice: string, languageType: string): Promise<string> {
+  const config = getTTSConfig();
+  if (config.provider === "minimax") {
+    return synthesizeMinimaxChunk(text, voice, languageType);
+  }
+  return synthesizeDashscopeChunk(text, voice, languageType);
+}
+
 export async function synthesizeSpeech(options: TTSOptions): Promise<string> {
   const config = getTTSConfig();
   const { text, voice = config.voice, languageType = config.languageType } = options;
   const cleanedText = cleanTextForTTS(text);
-  const truncatedText = truncateText(cleanedText, MAX_CHARACTERS);
+  const truncatedText = truncateText(cleanedText, getMaxCharacters(config.provider));
   return synthesizeSingleChunk(truncatedText, voice, languageType);
 }
 
@@ -163,7 +236,7 @@ export async function synthesizeSpeechChunked(options: SpeechChunkedOptions): Pr
   const { text, voice = config.voice, languageType = config.languageType, onChunkReady } = options;
 
   const cleanedText = cleanTextForTTS(text);
-  const chunks = splitTextIntoChunks(cleanedText, MAX_CHARACTERS);
+  const chunks = splitTextIntoChunks(cleanedText, getMaxCharacters(config.provider));
 
   const audioUrls: string[] = [];
   for (let i = 0; i < chunks.length; i++) {

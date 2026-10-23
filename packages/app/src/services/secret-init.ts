@@ -110,7 +110,12 @@ async function readSecret(category: string, key: string): Promise<string> {
 
 async function loadKeyringIntoMemory(): Promise<void> {
   // 先等异步存储 hydrate 完成，再注入 keyring 中的 key（否则会被 hydrate 覆盖）
-  await Promise.all([whenHydrated(useProviderStore), whenHydrated(useLlamaStore), whenHydrated(useConverterStore)]);
+  await Promise.all([
+    whenHydrated(useProviderStore),
+    whenHydrated(useLlamaStore),
+    whenHydrated(useConverterStore),
+    whenHydrated(useTTSStore),
+  ]);
 
   // 模型提供商
   const providerStore = useProviderStore.getState();
@@ -160,7 +165,7 @@ async function loadKeyringIntoMemory(): Promise<void> {
   const sciverseToken = await readSecret("sciverse", "token");
   if (sciverseToken) useSciverseStore.getState().setToken(sciverseToken);
 
-  // TTS（DashScope）
-  const ttsKey = await readSecret("tts", "dashscope");
+  // TTS（DashScope / MiniMax，按当前服务商载入）
+  const ttsKey = await readSecret("tts", useTTSStore.getState().config.provider);
   if (ttsKey) useTTSStore.getState().setApiKey(ttsKey);
 }

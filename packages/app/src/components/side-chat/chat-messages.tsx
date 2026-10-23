@@ -672,7 +672,7 @@ function ChatMessagesComponent({
 
   const handlePlayAudio = async (messageId: string, text: string) => {
     if (!ttsConfig.apiKey || ttsConfig.apiKey.trim() === "") {
-      toast.error("请先在设置中配置 DashScope API Key");
+      toast.error("请先在设置中配置语音模型 API Key");
       return;
     }
 
