@@ -32,16 +32,28 @@ const DASHSCOPE_VOICES: { value: string; label: string }[] = [
   { value: "Kiki", label: "粤语-阿清 Kiki - 甜美的港妹闺蜜" },
 ];
 
-/** MiniMax 常用系统音色（也可直接粘贴自定义/克隆音色 ID） */
+/** MiniMax 常用系统音色（不在此列的音色 ID 走「自定义」输入，支持克隆音色） */
 const MINIMAX_VOICE_PRESETS: { value: string; label: string }[] = [
   { value: "male-qn-qingse", label: "青涩青年" },
   { value: "male-qn-jingying", label: "精英青年" },
   { value: "male-qn-badao", label: "霸道青年" },
+  { value: "male-qn-daxuesheng", label: "青年大学生" },
   { value: "female-shaonv", label: "少女" },
   { value: "female-yujie", label: "御姐" },
   { value: "female-chengshu", label: "成熟女性" },
   { value: "female-tianmei", label: "甜美女性" },
+  { value: "clever_boy", label: "聪明男童" },
+  { value: "cute_boy", label: "可爱男童" },
+  { value: "lovely_girl", label: "萌萌女童" },
+  { value: "junlang_nanyou", label: "俊朗男友" },
+  { value: "chunzhen_xuedi", label: "纯真学弟" },
+  { value: "lengdan_xiongzhang", label: "冷淡学长" },
+  { value: "Chinese (Mandarin)_News_Anchor", label: "新闻女声" },
+  { value: "Chinese (Mandarin)_Male_Announcer", label: "播报男声" },
 ];
+
+/** Select 中代表「自定义音色 ID」的哨兵值（Radix Select 不允许空字符串 value） */
+const CUSTOM_VOICE_VALUE = "__custom_voice__";
 
 const API_KEY_HINT: Record<TTSProvider, string> = {
   dashscope: "DashScope API Key，用于调用阿里云通义千问 TTS 服务",
@@ -62,6 +74,11 @@ export default function TTSSettings() {
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
   const testRunIdRef = useRef(0);
 
+  // MiniMax 音色：预设下拉 + 自定义（克隆）音色 ID 输入
+  const [customVoiceEditing, setCustomVoiceEditing] = useState(false);
+  const isPresetMinimaxVoice = MINIMAX_VOICE_PRESETS.some((item) => item.value === config.voice);
+  const showCustomVoiceInput = customVoiceEditing || !isPresetMinimaxVoice;
+
   const stopTestAudio = useCallback(() => {
     testRunIdRef.current++;
     if (testAudioRef.current) {
@@ -77,6 +94,7 @@ export default function TTSSettings() {
   // 服务商/模型/音色变更时停止试听，避免继续播放旧配置合成的音频
   const changeProvider = (value: TTSProvider) => {
     stopTestAudio();
+    setCustomVoiceEditing(false);
     setProvider(value);
   };
   const changeModel = (value: string) => {
@@ -101,6 +119,10 @@ export default function TTSSettings() {
     }
     if (!config.apiKey.trim()) {
       toast.error("请先配置 API Key");
+      return;
+    }
+    if (!config.voice.trim()) {
+      toast.error("请先选择或填写音色");
       return;
     }
 
@@ -241,23 +263,40 @@ export default function TTSSettings() {
               </Select>
             ) : (
               <>
-                <Input
-                  id="tts-voice"
-                  list="minimax-voice-presets"
-                  value={config.voice}
-                  onChange={(e) => changeVoice(e.target.value)}
-                  placeholder="male-qn-qingse"
-                  className="h-8 font-mono"
-                />
-                <datalist id="minimax-voice-presets">
-                  {MINIMAX_VOICE_PRESETS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </datalist>
+                <Select
+                  value={showCustomVoiceInput ? CUSTOM_VOICE_VALUE : config.voice}
+                  onValueChange={(value) => {
+                    if (value === CUSTOM_VOICE_VALUE) {
+                      setCustomVoiceEditing(true);
+                      return;
+                    }
+                    setCustomVoiceEditing(false);
+                    changeVoice(value);
+                  }}
+                >
+                  <SelectTrigger id="tts-voice" className="h-8">
+                    <SelectValue placeholder="选择音色" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MINIMAX_VOICE_PRESETS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label} · {item.value}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_VOICE_VALUE}>自定义音色 ID…</SelectItem>
+                  </SelectContent>
+                </Select>
+                {showCustomVoiceInput && (
+                  <Input
+                    id="tts-voice-custom"
+                    value={config.voice}
+                    onChange={(e) => changeVoice(e.target.value)}
+                    placeholder="填写 MiniMax Voice ID，如 my-cloned-voice-id"
+                    className="h-8 font-mono"
+                  />
+                )}
                 <p className="text-neutral-500 text-xs dark:text-neutral-400">
-                  填 MiniMax Voice ID（如 male-qn-qingse、female-yujie），也可使用自己的克隆音色 ID
+                  系统音色直接从下拉选择；克隆音色选「自定义音色 ID…」后粘贴自己的 voice_id
                 </p>
               </>
             )}

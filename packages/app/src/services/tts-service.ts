@@ -228,7 +228,8 @@ export async function synthesizeSpeech(options: TTSOptions): Promise<string> {
 }
 
 interface SpeechChunkedOptions extends TTSOptions {
-  onChunkReady?: (url: string, index: number) => void;
+  /** 返回 false 可中止后续分片合成（如正文朗读被用户停止，避免继续消耗额度） */
+  onChunkReady?: (url: string, index: number) => void | boolean;
 }
 
 export async function synthesizeSpeechChunked(options: SpeechChunkedOptions): Promise<string[]> {
