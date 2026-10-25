@@ -1,3 +1,4 @@
+import { normalizeChatError } from "@/ai/utils/error-message";
 import { CitationMapContext, getStableCitationMap } from "@/components/markdown/citation-source";
 import { ImagePreviewOverlay } from "@/components/media/image-interactions";
 import { ChatContainerContent, ChatContainerScrollAnchor } from "@/components/prompt-kit/chat-container";
@@ -650,7 +651,8 @@ function ChatMessagesComponent({
     return cloned.textContent?.trim() || "";
   };
 
-  const errorMessage = typeof error === "string" ? error : error?.message;
+  // 历史消息里可能残留服务商原始错误（JSON 串），展示前统一归一化为可读中文
+  const errorMessage = error ? normalizeChatError(error) : undefined;
 
   const { getDisplayTime, onReasoningStreamingChange } = useReasoningTimer({
     messageId: lastMessage?.id,

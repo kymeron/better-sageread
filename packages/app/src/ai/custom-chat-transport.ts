@@ -38,6 +38,7 @@ import {
   stripFileParts,
   stripUnknownToolParts,
 } from "./utils";
+import { normalizeChatError } from "./utils/error-message";
 import { repairImageDataUrl, sniffImageMediaType } from "./utils/media-sniff";
 import { wrapToolsWithGuard } from "./utils/tool-guard";
 import { compactAgedRagResults } from "./utils/tool-result-slimming";
@@ -277,16 +278,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return result.toUIMessageStream({
       onError: (error) => {
         console.log("error", error);
-        if (error == null) {
-          return "Unknown error";
-        }
-        if (typeof error === "string") {
-          return error;
-        }
-        if (error instanceof Error) {
-          return error.message;
-        }
-        return JSON.stringify(error);
+        // 服务商原始错误（JSON 串）归一化为可读中文，避免界面直接显示 {"message":...}
+        return normalizeChatError(error);
       },
       messageMetadata: ({ part }) => {
         if (part.type === "finish") {
