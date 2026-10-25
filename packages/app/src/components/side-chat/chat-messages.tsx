@@ -716,6 +716,7 @@ function ChatMessagesComponent({
                 isFirstChunk = false;
                 setAudioStates((prev) => new Map(prev).set(messageId, "playing"));
               }
+              return true;
             },
           });
 

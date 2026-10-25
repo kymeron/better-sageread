@@ -84,25 +84,29 @@ const TOCView: React.FC<{
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     const updateHeight = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const parentContainer = containerRef.current.closest(".scroll-container");
-        if (parentContainer) {
-          const parentRect = parentContainer.getBoundingClientRect();
-          const availableHeight = parentRect.height - (rect.top - parentRect.top);
-          setContainerHeight(Math.max(400, availableHeight));
-        }
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const scrollContainer = el.closest(".scroll-container");
+      if (scrollContainer) {
+        const parentRect = scrollContainer.getBoundingClientRect();
+        const availableHeight = parentRect.height - (rect.top - parentRect.top);
+        setContainerHeight(Math.max(400, availableHeight));
+        return;
+      }
+      // 固定目录侧栏 / 移动端抽屉：按父容器（flex-1）高度撑满
+      const parentRect = el.parentElement?.getBoundingClientRect();
+      if (parentRect && parentRect.height > 0) {
+        setContainerHeight(Math.max(240, parentRect.height));
       }
     };
     updateHeight();
     window.addEventListener("resize", updateHeight);
     let resizeObserver: ResizeObserver | null = null;
-    if (containerRef.current) {
-      const parentContainer = containerRef.current.closest(".scroll-container");
-      if (parentContainer) {
-        resizeObserver = new ResizeObserver(updateHeight);
-        resizeObserver.observe(parentContainer);
-      }
+    const observedParent = containerRef.current?.closest(".scroll-container") ?? containerRef.current?.parentElement;
+    if (observedParent) {
+      resizeObserver = new ResizeObserver(updateHeight);
+      resizeObserver.observe(observedParent);
     }
 
     return () => {
@@ -233,7 +237,7 @@ const TOCView: React.FC<{
       </VirtualList>
     </div>
   ) : (
-    <div className="static-list rounded pt-2" ref={staticListRef}>
+    <div className="static-list h-full overflow-y-auto rounded pt-2" ref={staticListRef}>
       {flatItems.map((flatItem, index) => (
         <StaticListRow
           key={`static-row-${index}`}

@@ -27,6 +27,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-close",
     "core:window:allow-is-maximized",
+    "core:window:allow-is-fullscreen",
     "core:window:allow-set-decorations",
     "core:path:default",
     "fs:allow-appconfig-read-recursive",

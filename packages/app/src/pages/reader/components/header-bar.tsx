@@ -1,4 +1,3 @@
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLayoutStore } from "@/store/layout-store";
 import { useThemeStore } from "@/store/theme-store";
@@ -14,14 +13,12 @@ import { useAutoHideControls } from "../hooks/use-auto-hide-controls";
 import { useReaderStore } from "./reader-provider";
 import SearchDropdown from "./search-dropdown";
 import SettingsDropdown from "./settings-dropdown";
-import TOCView from "./toc-view";
 import TranslateDropdown from "./translate-dropdown";
 
 const HeaderBar = () => {
   const headerRef = useRef<HTMLDivElement>(null);
 
   const bookId = useReaderStore((state) => state.bookId);
-  const bookDoc = useReaderStore((state) => state.bookData?.bookDoc);
   const progress = useReaderStore((state) => state.progress);
   const openDropdown = useReaderStore((state) => state.openDropdown);
   const setOpenDropdown = useReaderStore((state) => state.setOpenDropdown);
@@ -41,7 +38,8 @@ const HeaderBar = () => {
   // （mousedown/touchstart 即时上抛，无双击阈值延迟，语义对齐 radix 的 pointerdown-outside），
   // 有关闭中的下拉时置 null。不动事件桥与既有消费方（标注弹窗/搜索清理等）。
   useEffect(() => {
-    if (!openDropdown || !bookId) return;
+    // 目录已改为固定侧栏：点正文不应收起（其余浮层沿用外点收起）
+    if (!openDropdown || openDropdown === "toc" || !bookId) return;
     const handleIframePointer = (event: MessageEvent) => {
       if (
         (event.data?.type === "iframe-mousedown" || event.data?.type === "iframe-touchstart") &&
@@ -62,12 +60,8 @@ const HeaderBar = () => {
     keepVisible: Boolean(openDropdown),
   });
 
-  const handleToggleTocDropdown = (isOpen: boolean) => {
-    setOpenDropdown?.(isOpen ? "toc" : null);
-  };
-
-  const handleTocItemSelect = () => {
-    setOpenDropdown?.(null);
+  const handleToggleToc = () => {
+    setOpenDropdown?.(isTocDropdownOpen ? null : "toc");
   };
 
   return (
@@ -99,38 +93,22 @@ const HeaderBar = () => {
             </TooltipContent>
           </Tooltip>
 
-          <DropdownMenu open={isTocDropdownOpen} onOpenChange={handleToggleTocDropdown}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button className="btn btn-ghost flex h-6 w-6 items-center justify-center rounded-full p-0 outline-none focus:outline-none focus-visible:ring-0">
-                    <TableOfContents size={18} className="text-base-content" />
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">目录</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent
-              className="max-h-[calc(100vh-8rem)] w-80 overflow-y-auto p-0"
-              align="start"
-              side="bottom"
-              sideOffset={4}
-            >
-              {bookDoc?.toc ? (
-                <div className="h-full">
-                  <TOCView
-                    toc={bookDoc.toc}
-                    bookId={bookId!}
-                    autoExpand={true}
-                    onItemSelect={handleTocItemSelect}
-                    isVisible={isTocDropdownOpen}
-                  />
-                </div>
-              ) : (
-                <div className="p-4 text-center text-muted-foreground">没有可用的目录</div>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="目录"
+                aria-pressed={isTocDropdownOpen}
+                onClick={handleToggleToc}
+                className={`btn btn-ghost flex h-6 w-6 items-center justify-center rounded-full p-0 outline-none focus:outline-none focus-visible:ring-0 ${
+                  isTocDropdownOpen ? "text-primary" : "text-base-content"
+                }`}
+              >
+                <TableOfContents size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{isTocDropdownOpen ? "收起目录" : "目录"}</TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="flex min-w-0 flex-1 items-center justify-center gap-x-4 px-4">

@@ -1,7 +1,7 @@
 import GlobalConvertProgress from "@/components/global-convert-progress";
 import HomeLayout from "@/components/home-layout";
-import MobileLayout from "@/components/mobile/mobile-layout";
 import { renderInlineMathHtml } from "@/components/markdown/inline-math-text";
+import MobileLayout from "@/components/mobile/mobile-layout";
 import { MotionSidebar, SidebarMotionPin, SidebarMotionProvider } from "@/components/motion/sidebar-motion";
 import { NotepadContainer } from "@/components/notepad";
 import NotificationDropdown from "@/components/notification-dropdown";
@@ -18,6 +18,7 @@ import { useFontEvents } from "@/hooks/use-font-events";
 import { useMotionMode } from "@/hooks/use-motion-mode";
 import { useRailWheel } from "@/hooks/use-rail-wheel";
 import { useSyncEvents } from "@/hooks/use-sync-events";
+import { useWindowFullscreen } from "@/hooks/use-window-fullscreen";
 import PaperReaderView from "@/pages/paper-reader/paper-reader-view";
 import ReaderViewer from "@/pages/reader";
 import { ReaderProvider } from "@/pages/reader/components/reader-provider";
@@ -248,6 +249,8 @@ export default function ReaderLayout() {
   const [showOverlay, setShowOverlay] = useState(false);
 
   const isWindows = getOSPlatform() === "windows";
+  // 全屏时 macOS 交通灯隐藏，顶栏左侧不再预留窗口按钮空间（主页等操作左对齐）
+  const isFullscreen = useWindowFullscreen();
   const isVertical = tabOrientation === "vertical";
   // 侧边栏高度：直接撑满行高。三栏式外框下必须与中间阅读区上下齐平——
   // 原先按标签栏高度硬算（44/48px）会比行高少 4px，加了边线后能看出两侧栏比中间矮一截
@@ -555,7 +558,7 @@ export default function ReaderLayout() {
           data-tauri-drag-region
           data-region="reader-tabs"
           className="relative flex h-8 shrink-0 select-none items-center bg-tab-background pr-1"
-          style={isWindows ? undefined : { paddingLeft: 70 }}
+          style={isWindows || isFullscreen ? undefined : { paddingLeft: 70 }}
         >
           {/* 左侧顶格：主页 / 切换横向标签。
               控件尺寸与颜色与横向 pinnedLeft 完全一致；容器带 drag region，按钮本身不触发拖动 */}
@@ -612,7 +615,7 @@ export default function ReaderLayout() {
             darkMode={isDarkMode}
             className="h-7"
             enableDragRegion={true}
-            marginLeft={isWindows ? 0 : 60}
+            marginLeft={isWindows || isFullscreen ? 0 : 60}
             renderTabTitleHtml={renderInlineMathHtml}
             pinnedLeft={
               <div className="mx-2 flex items-center gap-2">

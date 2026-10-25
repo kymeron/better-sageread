@@ -136,6 +136,36 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     };
   }, []);
 
+  // 正文容器尺寸变化（目录侧栏开合、窗口 resize 等）→ 重算布局并重新分页：
+  // paginator 自带的 ResizeObserver 只按旧的 max-inline-size 重排，需要 refresh 同步新的宽度约束
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let timer: number | null = null;
+    let lastWidth = container.clientWidth;
+    let lastHeight = container.clientHeight;
+
+    const observer = new ResizeObserver(() => {
+      if (!isInitialized.current) return;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (Math.abs(width - lastWidth) < 1 && Math.abs(height - lastHeight) < 1) return;
+      lastWidth = width;
+      lastHeight = height;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void managerRef.current?.refresh();
+      }, 120);
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
+
   // 书籍样式只在"书籍侧相关"字段变化时重注入：
   // 遮罩浓度/场景图片切换只影响应用侧容器背景（reader-viewer.tsx），不触发这里
   const bookBgMode = themeCode.backgroundImage ? "image" : "solid";

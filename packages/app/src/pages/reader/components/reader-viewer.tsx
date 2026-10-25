@@ -18,6 +18,7 @@ import Annotator from "./annotator";
 import FooterBar from "./footer-bar";
 import HeaderBar from "./header-bar";
 import { useReaderStore, useReaderStoreApi } from "./reader-provider";
+import TOCSidebar from "./toc-sidebar";
 
 const ReaderViewerContent: React.FC = () => {
   const bookId = useReaderStore((state) => state.bookId);
@@ -115,6 +116,8 @@ export default function ReaderViewer() {
   const config = useReaderStore((state) => state.config);
   const isLoading = useReaderStore((state) => state.isLoading);
   const error = useReaderStore((state) => state.error);
+  // 目录固定侧栏（桌面）：openDropdown === "toc" 时在正文左侧常驻
+  const isTocOpen = useReaderStore((state) => state.openDropdown === "toc") ?? false;
 
   const { settings } = useAppSettingsStore();
   const { booksWithStatus } = useLibraryStore();
@@ -187,12 +190,16 @@ export default function ReaderViewer() {
   }
 
   return (
-    <div id={`gridcell-${bookId}`} className="relative flex h-full w-full flex-col rounded-md bg-background">
-      {/* 移动端上下栏由 MobileLayout 体系接管（M3-c 单击弹出式）；桌面组件原样保留 */}
-      {!isMobile && <HeaderBar />}
-      <ReaderViewerContent />
-      {!isMobile && <FooterBar />}
-      <Annotator />
+    <div className="flex h-full w-full">
+      {/* 目录以固定侧栏常驻正文左侧（挤压正文宽度），移动端仍走底部抽屉 */}
+      {!isMobile && isTocOpen && <TOCSidebar />}
+      <div id={`gridcell-${bookId}`} className="relative flex h-full min-w-0 flex-1 flex-col rounded-md bg-background">
+        {/* 移动端上下栏由 MobileLayout 体系接管（M3-c 单击弹出式）；桌面组件原样保留 */}
+        {!isMobile && <HeaderBar />}
+        <ReaderViewerContent />
+        {!isMobile && <FooterBar />}
+        <Annotator />
+      </div>
     </div>
   );
 }
